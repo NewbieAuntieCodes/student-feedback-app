@@ -1,26 +1,25 @@
 // src/store/studentStore.js
 import { defineStore } from 'pinia'
-import axios from 'axios'
-
-const API_COURSES_BASE_URL = 'http://localhost:3001/api/courses' // 请确保端口正确
+import * as studentService from '../services/studentService' // 导入学生服务
 
 export const useStudentStore = defineStore('student', {
   state: () => ({
-    students: [], // 存储当前选定课程下的学生列表
-    currentStudent: null, // 当前选中的学生对象
-    isLoading: false, // 用于获取学生列表的加载状态
-    error: null, // 用于获取学生列表的错误信息
-    isUpdating: false, // 用于更新学生信息的加载状态
-    updateError: null, // 用于存储更新学生信息时的错误
-    isAddingStudent: false, // 用于添加学生的加载状态
-    addStudentError: null, // 用于添加学生的错误信息
+    students: [],
+    currentStudent: null,
+    isLoading: false,
+    error: null,
+    isUpdating: false,
+    updateError: null,
+    isAddingStudent: false,
+    addStudentError: null,
+    isDeletingStudent: false, // 新增
+    deleteStudentError: null, // 新增
   }),
   getters: {
     studentsInCurrentCourse: (state) => state.students,
     selectedStudent: (state) => state.currentStudent,
   },
   actions: {
-    // 获取指定课程下的所有学生
     async fetchStudentsInCourse(courseId) {
       if (!courseId) {
         this.error = '未提供课程ID以获取学生列表'
@@ -30,7 +29,7 @@ export const useStudentStore = defineStore('student', {
       this.isLoading = true
       this.error = null
       try {
-        const response = await axios.get(`${API_COURSES_BASE_URL}/${courseId}/students`)
+        const response = await studentService.fetchStudentsInCourse(courseId) // 使用 StudentService
         if (response.data && response.data.students) {
           this.students = response.data.students
         } else {
@@ -45,12 +44,36 @@ export const useStudentStore = defineStore('student', {
       }
     },
 
-    // 设置当前选中的学生
     setCurrentStudent(student) {
       this.currentStudent = student
     },
 
-    // 添加学生到指定课程
+    // 可选: 根据 ID 获取单个学生详情并设为 currentStudent
+    async fetchAndSetCurrentStudent(courseId, studentId) {
+      if (!courseId || !studentId) {
+        this.error = '未提供课程或学生ID'
+        this.currentStudent = null
+        return
+      }
+      this.isLoading = true
+      this.error = null
+      try {
+        const response = await studentService.fetchStudentDetails(courseId, studentId)
+        if (response.data && response.data.student) {
+          this.currentStudent = response.data.student
+        } else {
+          this.currentStudent = null
+          this.error = '未找到学生信息'
+        }
+      } catch (err) {
+        this.error = err.response?.data?.message || '获取学生详情失败'
+        this.currentStudent = null
+        console.error('fetchAndSetCurrentStudent error:', err)
+      } finally {
+        this.isLoading = false
+      }
+    },
+
     async addStudentToCourse(courseId, studentData) {
       if (!courseId) {
         this.addStudentError = '未提供课程ID以添加学生'
@@ -58,18 +81,11 @@ export const useStudentStore = defineStore('student', {
       }
       this.isAddingStudent = true
       this.addStudentError = null
-      this.error = null // Clear general error
+      this.error = null
       try {
-        const response = await axios.post(
-          `${API_COURSES_BASE_URL}/${courseId}/students`,
-          studentData,
-        )
+        const response = await studentService.addStudentToCourse(courseId, studentData) // 使用 StudentService
         if (response.data && response.data.student) {
-          this.students.unshift(response.data.student) // 添加到列表开头
-          // 可选：如果添加后只有一个学生，或希望自动选中，则设置 currentStudent
-          // if (this.students.length === 1) {
-          //   this.setCurrentStudent(response.data.student);
-          // }
+          this.students.unshift(response.data.student)
           return response.data.student
         }
         this.addStudentError = '添加学生成功，但服务器响应格式不正确。'
@@ -83,7 +99,6 @@ export const useStudentStore = defineStore('student', {
       }
     },
 
-    // 更新学生信息
     async updateStudentDetails(courseId, studentId, studentDataToUpdate) {
       if (!courseId || !studentId) {
         this.updateError = '未提供课程或学生ID用于更新'
@@ -91,12 +106,13 @@ export const useStudentStore = defineStore('student', {
       }
       this.isUpdating = true
       this.updateError = null
-      this.error = null // Clear general error
+      this.error = null
       try {
-        const response = await axios.put(
-          `${API_COURSES_BASE_URL}/${courseId}/students/${studentId}`,
+        const response = await studentService.updateStudentDetails(
+          courseId,
+          studentId,
           studentDataToUpdate,
-        )
+        ) // 使用 StudentService
         if (response.data && response.data.student) {
           const updatedStudent = response.data.student
           const indexInList = this.students.findIndex((s) => s._id === updatedStudent._id)
@@ -119,20 +135,43 @@ export const useStudentStore = defineStore('student', {
       }
     },
 
-    // 当课程改变时，清空学生列表和当前学生
+    async deleteStudent(courseId, studentId) {
+      // 新增
+      if (!courseId || !studentId) {
+        this.deleteStudentError = '未提供课程或学生ID用于删除'
+        return false
+      }
+      this.isDeletingStudent = true
+      this.deleteStudentError = null
+      this.error = null
+      try {
+        await studentService.deleteStudent(courseId, studentId) // 使用 StudentService
+        this.students = this.students.filter((student) => student._id !== studentId)
+        if (this.currentStudent && this.currentStudent._id === studentId) {
+          this.currentStudent = null
+        }
+        return true
+      } catch (err) {
+        this.deleteStudentError = err.response?.data?.message || '删除学生失败'
+        console.error('deleteStudent error:', err)
+        return false
+      } finally {
+        this.isDeletingStudent = false
+      }
+    },
+
     clearStudents() {
       this.students = []
       this.currentStudent = null
-      // 也清除与学生列表相关的错误和加载状态
       this.error = null
       this.isLoading = false
     },
 
-    // 清除所有与学生操作相关的错误信息
     clearStudentErrors() {
       this.error = null
       this.updateError = null
       this.addStudentError = null
+      this.deleteStudentError = null
     },
   },
 })

@@ -1,13 +1,10 @@
 // src/store/feedbackStore.js
 import { defineStore } from 'pinia'
-import axios from 'axios'
-
-// API 基础路径 /api/courses/:courseId/students/:studentId/feedback
-const API_COURSES_BASE_URL = 'http://localhost:3001/api/courses' // 确保端口正确
+import * as feedbackService from '../services/feedbackService' // 导入反馈服务
 
 export const useFeedbackStore = defineStore('feedback', {
   state: () => ({
-    feedbackHistory: [], // 存储某个学生的历史反馈
+    feedbackHistory: [],
     isLoadingHistory: false,
     historyError: null,
     isSubmitting: false,
@@ -23,9 +20,7 @@ export const useFeedbackStore = defineStore('feedback', {
       this.isLoadingHistory = true
       this.historyError = null
       try {
-        const response = await axios.get(
-          `${API_COURSES_BASE_URL}/${courseId}/students/${studentId}/feedback`,
-        )
+        const response = await feedbackService.fetchFeedbackForStudent(courseId, studentId) // 使用 FeedbackService
         if (response.data && response.data.feedback) {
           this.feedbackHistory = response.data.feedback
         } else {
@@ -48,28 +43,15 @@ export const useFeedbackStore = defineStore('feedback', {
       this.isSubmitting = true
       this.submissionError = null
       try {
-        // 后端 feedbackController 的 addFeedback 期望的字段
-        const payload = {
-          feedbackDate: feedbackData.feedbackDate,
-          classTime: feedbackData.classTime,
-          lastHomeworkStatus: feedbackData.lastHomeworkStatus,
-          teachingContent: feedbackData.teachingContent,
-          classPerformance: feedbackData.classPerformance,
-          progressMade: feedbackData.progressMade,
-          areasForImprovement: feedbackData.areasForImprovement,
-          punctuality: feedbackData.punctuality,
-          extrapolationAbility: feedbackData.extrapolationAbility,
-        }
-        const response = await axios.post(
-          `${API_COURSES_BASE_URL}/${courseId}/students/${studentId}/feedback`,
-          payload,
-        )
+        // 后端 feedbackController 的 addFeedback 期望的字段，确保 feedbackData 结构正确
+        const response = await feedbackService.addFeedback(courseId, studentId, feedbackData) // 使用 FeedbackService
         if (response.status === 201 && response.data.feedback) {
           // 提交成功后，可以选择将新反馈添加到 feedbackHistory 的开头，或者重新获取整个列表
-          // this.feedbackHistory.unshift(response.data.feedback); // 如果想立即更新UI
+          // this.feedbackHistory.unshift(response.data.feedback);
+          // 更好的做法是让调用者决定是否刷新列表
           return true
         }
-        return false
+        return false // 或抛出错误
       } catch (err) {
         this.submissionError = err.response?.data?.message || '提交反馈失败'
         console.error('addFeedback error:', err)
@@ -82,6 +64,10 @@ export const useFeedbackStore = defineStore('feedback', {
     clearHistory() {
       this.feedbackHistory = []
       this.historyError = null
+    },
+
+    clearSubmissionError() {
+      this.submissionError = null
     },
   },
 })

@@ -1,59 +1,54 @@
 // src/store/courseStore.js
 import { defineStore } from 'pinia'
-import axios from 'axios'
-
-// 定义你的后端 API 地址 (课程相关)
-const API_BASE_URL = 'http://localhost:3001/api/courses' // 请确保端口正确
+import * as courseService from '../services/courseService' // 导入课程服务
 
 export const useCourseStore = defineStore('course', {
   state: () => ({
-    courses: [], // 存储用户的课程列表
-    currentCourse: null, // 当前选中的课程对象
-    isLoading: false, // 用于获取课程列表或详情的加载状态
-    error: null, // 用于获取课程列表或详情的错误信息
-    isCreatingCourse: false, // 用于创建课程的加载状态
-    createCourseError: null, // 用于创建课程的错误信息
-    isUpdatingCourse: false, // 用于更新课程的加载状态
-    updateCourseError: null, // 用于更新课程的错误信息
+    courses: [],
+    currentCourse: null,
+    isLoading: false,
+    error: null,
+    isCreatingCourse: false,
+    createCourseError: null,
+    isUpdatingCourse: false,
+    updateCourseError: null,
+    isDeletingCourse: false, // 新增删除状态
+    deleteCourseError: null, // 新增删除错误状态
   }),
   getters: {
     userCourses: (state) => state.courses,
     selectedCourse: (state) => state.currentCourse,
   },
   actions: {
-    // 获取当前登录用户的所有课程
     async fetchUserCourses() {
       this.isLoading = true
-      this.error = null // 清除之前的列表加载错误
+      this.error = null
       try {
-        const response = await axios.get(`${API_BASE_URL}/`) // GET /api/courses
+        const response = await courseService.fetchUserCourses() // 使用 CourseService
         if (response.data && response.data.courses) {
           this.courses = response.data.courses
         } else {
-          this.courses = [] // 如果没有课程或响应格式不对
+          this.courses = []
         }
       } catch (err) {
         this.error = err.response?.data?.message || '获取课程列表失败'
-        this.courses = [] // 出错时清空课程
+        this.courses = []
         console.error('fetchUserCourses error:', err)
       } finally {
         this.isLoading = false
       }
     },
 
-    // 设置当前选中的课程
     setCurrentCourse(course) {
-      // 当课程被清空 (null) 时，也应该接受
       this.currentCourse = course
     },
 
-    // （可选）根据 ID 获取单个课程详情
     async fetchCourseById(courseId) {
       this.isLoading = true
       this.error = null
       try {
-        const response = await axios.get(`${API_BASE_URL}/${courseId}`) // GET /api/courses/:id
-        // 如果需要，可以在这里设置 this.currentCourse = response.data.course;
+        const response = await courseService.fetchCourseById(courseId) // 使用 CourseService
+        // this.currentCourse = response.data.course; // 可以直接在这里设置，或者由调用者设置
         return response.data.course
       } catch (err) {
         this.error = err.response?.data?.message || '获取课程详情失败'
@@ -64,21 +59,17 @@ export const useCourseStore = defineStore('course', {
       }
     },
 
-    // 创建新课程
     async createCourse(courseData) {
-      // courseData: { name: '课程名' }
       this.isCreatingCourse = true
-      this.createCourseError = null // 清除之前的创建错误
-      this.error = null // 同时清除通用的列表加载错误
+      this.createCourseError = null
+      this.error = null
       try {
-        const response = await axios.post(`${API_BASE_URL}/`, courseData) // POST /api/courses
+        const response = await courseService.createCourse(courseData) // 使用 CourseService
         if (response.data && response.data.course) {
-          this.courses.unshift(response.data.course) // 添加到列表开头，立即在UI上可见
-          // 可选：创建成功后，将新创建的课程设为当前选中课程
-          // this.setCurrentCourse(response.data.course);
-          return response.data.course // 返回创建的课程对象
+          this.courses.unshift(response.data.course)
+          // this.setCurrentCourse(response.data.course); // 可选
+          return response.data.course
         }
-        // 如果后端成功但返回数据格式不对
         this.createCourseError = '创建课程成功，但服务器响应格式不正确。'
         return null
       } catch (err) {
@@ -90,32 +81,27 @@ export const useCourseStore = defineStore('course', {
       }
     },
 
-    // 更新课程信息
     async updateCourse(courseId, courseDataToUpdate) {
-      // courseDataToUpdate: { name: '新课程名' }
       if (!courseId) {
         this.updateCourseError = '未提供课程ID用于更新'
         return false
       }
       this.isUpdatingCourse = true
-      this.updateCourseError = null // 清除之前的更新错误
-      this.error = null // 同时清除通用的列表加载错误
+      this.updateCourseError = null
+      this.error = null
       try {
-        const response = await axios.put(`${API_BASE_URL}/${courseId}`, courseDataToUpdate) // PUT /api/courses/:id
+        const response = await courseService.updateCourse(courseId, courseDataToUpdate) // 使用 CourseService
         if (response.data && response.data.course) {
           const updatedCourse = response.data.course
-          // 更新 courses 列表中的对应课程
           const index = this.courses.findIndex((c) => c._id === updatedCourse._id)
           if (index !== -1) {
             this.courses[index] = { ...this.courses[index], ...updatedCourse }
           }
-          // 如果当前选中的就是这个课程，也更新 currentCourse
           if (this.currentCourse && this.currentCourse._id === updatedCourse._id) {
             this.currentCourse = { ...this.currentCourse, ...updatedCourse }
           }
-          return true // 表示更新成功
+          return true
         }
-        // 如果后端成功但返回数据格式不对
         this.updateCourseError = '更新课程成功，但服务器响应格式不正确。'
         return false
       } catch (err) {
@@ -127,11 +113,36 @@ export const useCourseStore = defineStore('course', {
       }
     },
 
-    // 清除所有类型的错误信息
+    async deleteCourse(courseId) {
+      // 新增删除 action
+      if (!courseId) {
+        this.deleteCourseError = '未提供课程ID用于删除'
+        return false
+      }
+      this.isDeletingCourse = true
+      this.deleteCourseError = null
+      this.error = null
+      try {
+        await courseService.deleteCourse(courseId) // 使用 CourseService
+        this.courses = this.courses.filter((course) => course._id !== courseId)
+        if (this.currentCourse && this.currentCourse._id === courseId) {
+          this.currentCourse = null // 如果删除的是当前选中课程，则清空
+        }
+        return true
+      } catch (err) {
+        this.deleteCourseError = err.response?.data?.message || '删除课程失败'
+        console.error('deleteCourse error:', err)
+        return false
+      } finally {
+        this.isDeletingCourse = false
+      }
+    },
+
     clearErrors() {
       this.error = null
       this.createCourseError = null
       this.updateCourseError = null
+      this.deleteCourseError = null
     },
   },
 })

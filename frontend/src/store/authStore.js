@@ -1,18 +1,16 @@
 // src/store/authStore.js
 import { defineStore } from 'pinia'
-import axios from 'axios' // 或者你封装的 API 服务
 import router from '../router' // 引入 router 实例用于导航
-
-// 定义你的后端 API 地址
-const API_BASE_URL = 'http://localhost:3001/api/auth' // 请根据你的后端地址修改
+import * as authService from '../services/authService' // 导入认证服务
+import apiClient from '../services/apiClient' // 导入 apiClient 以便修改其默认头
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token') || null,
     user: JSON.parse(localStorage.getItem('user')) || null,
     loginError: null,
-    registerError: null, // 新增：用于存储注册错误信息
-    registerSuccessMessage: null, // 新增：用于存储注册成功信息
+    registerError: null,
+    registerSuccessMessage: null,
     isLoading: false,
   }),
   getters: {
@@ -24,9 +22,9 @@ export const useAuthStore = defineStore('auth', {
     async login(credentials) {
       this.isLoading = true
       this.loginError = null
-      this.registerSuccessMessage = null // 清除可能存在的注册成功消息
+      this.registerSuccessMessage = null
       try {
-        const response = await axios.post(`${API_BASE_URL}/login`, credentials)
+        const response = await authService.login(credentials) // 使用 AuthService
         const { token, user } = response.data
 
         if (token && user) {
@@ -34,21 +32,30 @@ export const useAuthStore = defineStore('auth', {
           this.user = user
           localStorage.setItem('token', token)
           localStorage.setItem('user', JSON.stringify(user))
-          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
-          router.push('/')
+          // apiClient 的请求拦截器会自动处理 token，这里无需手动设置 apiClient.defaults.headers
+          // 但如果 apiClient 实例在 store 加载后才创建或 token 更新时需要强制刷新拦截器逻辑，
+          // 或者你有其他不通过 apiClient 发送的请求需要 token, 则可能需要其他策略。
+          // 为简单起见，依赖请求拦截器。
+          if (token) {
+            // 确保 token 存在
+            apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`
+          } else {
+            delete apiClient.defaults.headers.common['Authorization']
+          }
+          router.push(router.currentRoute.value.query.redirect || '/') // 跳转到之前意图的页面或首页
         } else {
           this.loginError = '登录失败，服务器返回数据格式不正确。'
         }
-        this.isLoading = false
         return true
       } catch (error) {
-        this.isLoading = false
         if (error.response && error.response.data && error.response.data.message) {
           this.loginError = error.response.data.message
         } else {
           this.loginError = '登录失败，请检查您的网络或联系管理员。'
         }
         return false
+      } finally {
+        this.isLoading = false
       }
     },
 
@@ -60,60 +67,66 @@ export const useAuthStore = defineStore('auth', {
       this.registerSuccessMessage = null
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      delete axios.defaults.headers.common['Authorization']
+      delete apiClient.defaults.headers.common['Authorization'] // 清除 apiClient 的默认头
       router.push('/login')
     },
 
-    // 新增：注册 Action
     async register(userData) {
       this.isLoading = true
       this.registerError = null
       this.registerSuccessMessage = null
       try {
-        // 假设 userData 包含 username 和 password
-        const response = await axios.post(`${API_BASE_URL}/register`, userData)
+        const response = await authService.register(userData) // 使用 AuthService
 
-        // 后端注册成功通常返回 201 和用户信息或成功消息
         if (response.status === 201 && response.data.message) {
           this.registerSuccessMessage = response.data.message + ' 您现在可以登录了。'
-          // 可选：注册成功后直接跳转到登录页
-          // router.push('/login');
         } else {
-          // 处理非预期的成功响应
           this.registerError = '注册请求成功，但响应格式不正确。'
         }
-        this.isLoading = false
-        return true // 表示API调用成功（不一定代表业务逻辑上的“注册成功并自动登录”）
+        return true
       } catch (error) {
-        this.isLoading = false
         if (error.response && error.response.data && error.response.data.message) {
           this.registerError = error.response.data.message
         } else {
           this.registerError = '注册失败，请稍后再试或联系管理员。'
         }
-        return false // 表示API调用失败
+        return false
+      } finally {
+        this.isLoading = false
       }
     },
 
-    // 清除错误和成功消息的方法，方便在组件切换时调用
+    // Action to attempt to load user info if token exists but user info is missing (e.g., after page refresh)
+    async fetchUserOnLoad() {
+      if (this.token && !this.user) {
+        this.isLoading = true
+        try {
+          const response = await authService.fetchCurrentUser() // 使用 AuthService
+          this.user = response.data.user
+          localStorage.setItem('user', JSON.stringify(this.user))
+        } catch (error) {
+          console.error('Failed to fetch user on load:', error)
+          // Token might be invalid, consider logging out
+          // this.logout(); // 或者不处理，让路由守卫处理
+        } finally {
+          this.isLoading = false
+        }
+      }
+    },
+
     clearAuthMessages() {
       this.loginError = null
       this.registerError = null
       this.registerSuccessMessage = null
     },
+
+    // 更新 main.js 和 router/index.js 会在适当时候调用这个
+    setTokenInApiClient() {
+      if (this.token) {
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${this.token}`
+      } else {
+        delete apiClient.defaults.headers.common['Authorization']
+      }
+    },
   },
 })
-// （可选）从 localStorage 加载用户状态，应用初始化时调用
-// 这个逻辑部分移到了 state 的初始值中
-// loadUserFromStorage() {
-//   const token = localStorage.getItem('token');
-//   const user = localStorage.getItem('user');
-//   if (token && user) {
-//     this.token = token;
-//     this.user = JSON.parse(user);
-//     axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-//   }
-// }
-
-// 注册逻辑可以后续添加在这里
-// async register(userData) { ... }
