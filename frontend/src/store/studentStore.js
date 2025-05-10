@@ -1,6 +1,6 @@
-// src/store/studentStore.js
+// frontend/src/store/studentStore.js
 import { defineStore } from 'pinia'
-import * as studentService from '../services/studentService' // 导入学生服务
+import * as studentService from '../services/studentService'
 
 export const useStudentStore = defineStore('student', {
   state: () => ({
@@ -8,37 +8,47 @@ export const useStudentStore = defineStore('student', {
     currentStudent: null,
     isLoading: false,
     error: null,
+    // ... (其他状态保持不变)
     isUpdating: false,
     updateError: null,
     isAddingStudent: false,
     addStudentError: null,
-    isDeletingStudent: false, // 新增
-    deleteStudentError: null, // 新增
+    isDeletingStudent: false,
+    deleteStudentError: null,
   }),
   getters: {
     studentsInCurrentCourse: (state) => state.students,
     selectedStudent: (state) => state.currentStudent,
   },
   actions: {
-    async fetchStudentsInCourse(courseId) {
+    // 用于根据路由参数或课程选择来加载学生并设置当前学生
+    async fetchStudentsInCourseAndSetCurrent(courseId, studentIdToSelect = null) {
       if (!courseId) {
-        this.error = '未提供课程ID以获取学生列表'
         this.students = []
+        this.currentStudent = null
+        this.error = '未提供课程ID'
         return
       }
       this.isLoading = true
       this.error = null
       try {
-        const response = await studentService.fetchStudentsInCourse(courseId) // 使用 StudentService
+        const response = await studentService.fetchStudentsInCourse(courseId)
         if (response.data && response.data.students) {
           this.students = response.data.students
+          if (studentIdToSelect && this.students.some((s) => s._id === studentIdToSelect)) {
+            this.currentStudent = this.students.find((s) => s._id === studentIdToSelect) || null
+          } else {
+            this.currentStudent = null // 如果学生ID无效或未提供，则不选择任何学生
+          }
         } else {
           this.students = []
+          this.currentStudent = null
         }
       } catch (err) {
         this.error = err.response?.data?.message || '获取学生列表失败'
         this.students = []
-        console.error('fetchStudentsInCourse error:', err)
+        this.currentStudent = null
+        console.error('fetchStudentsInCourseAndSetCurrent error:', err)
       } finally {
         this.isLoading = false
       }
@@ -48,32 +58,21 @@ export const useStudentStore = defineStore('student', {
       this.currentStudent = student
     },
 
-    // 可选: 根据 ID 获取单个学生详情并设为 currentStudent
-    async fetchAndSetCurrentStudent(courseId, studentId) {
-      if (!courseId || !studentId) {
-        this.error = '未提供课程或学生ID'
-        this.currentStudent = null
-        return
-      }
-      this.isLoading = true
+    clearStudentsAndCurrent() {
+      this.students = []
+      this.currentStudent = null
+      this.error = null // 也清除错误状态
+      this.isLoading = false
+    },
+    clearStudents() {
+      // 保留旧的，如果其他地方只希望清空列表而不影响当前学生
+      this.students = []
+      // this.currentStudent = null
       this.error = null
-      try {
-        const response = await studentService.fetchStudentDetails(courseId, studentId)
-        if (response.data && response.data.student) {
-          this.currentStudent = response.data.student
-        } else {
-          this.currentStudent = null
-          this.error = '未找到学生信息'
-        }
-      } catch (err) {
-        this.error = err.response?.data?.message || '获取学生详情失败'
-        this.currentStudent = null
-        console.error('fetchAndSetCurrentStudent error:', err)
-      } finally {
-        this.isLoading = false
-      }
+      this.isLoading = false
     },
 
+    // ... (addStudentToCourse, updateStudentDetails, deleteStudent actions 保持不变或微调)
     async addStudentToCourse(courseId, studentData) {
       if (!courseId) {
         this.addStudentError = '未提供课程ID以添加学生'
@@ -81,11 +80,10 @@ export const useStudentStore = defineStore('student', {
       }
       this.isAddingStudent = true
       this.addStudentError = null
-      this.error = null
       try {
-        const response = await studentService.addStudentToCourse(courseId, studentData) // 使用 StudentService
+        const response = await studentService.addStudentToCourse(courseId, studentData)
         if (response.data && response.data.student) {
-          this.students.unshift(response.data.student)
+          this.students.unshift(response.data.student) // 添加到列表顶部
           return response.data.student
         }
         this.addStudentError = '添加学生成功，但服务器响应格式不正确。'
@@ -106,13 +104,12 @@ export const useStudentStore = defineStore('student', {
       }
       this.isUpdating = true
       this.updateError = null
-      this.error = null
       try {
         const response = await studentService.updateStudentDetails(
           courseId,
           studentId,
           studentDataToUpdate,
-        ) // 使用 StudentService
+        )
         if (response.data && response.data.student) {
           const updatedStudent = response.data.student
           const indexInList = this.students.findIndex((s) => s._id === updatedStudent._id)
@@ -122,7 +119,7 @@ export const useStudentStore = defineStore('student', {
           if (this.currentStudent && this.currentStudent._id === updatedStudent._id) {
             this.currentStudent = { ...this.currentStudent, ...updatedStudent }
           }
-          return true
+          return updatedStudent // 返回更新后的学生对象
         }
         this.updateError = '更新学生信息成功，但服务器响应格式不正确。'
         return false
@@ -136,16 +133,14 @@ export const useStudentStore = defineStore('student', {
     },
 
     async deleteStudent(courseId, studentId) {
-      // 新增
       if (!courseId || !studentId) {
         this.deleteStudentError = '未提供课程或学生ID用于删除'
         return false
       }
       this.isDeletingStudent = true
       this.deleteStudentError = null
-      this.error = null
       try {
-        await studentService.deleteStudent(courseId, studentId) // 使用 StudentService
+        await studentService.deleteStudent(courseId, studentId)
         this.students = this.students.filter((student) => student._id !== studentId)
         if (this.currentStudent && this.currentStudent._id === studentId) {
           this.currentStudent = null
@@ -159,14 +154,6 @@ export const useStudentStore = defineStore('student', {
         this.isDeletingStudent = false
       }
     },
-
-    clearStudents() {
-      this.students = []
-      this.currentStudent = null
-      this.error = null
-      this.isLoading = false
-    },
-
     clearStudentErrors() {
       this.error = null
       this.updateError = null

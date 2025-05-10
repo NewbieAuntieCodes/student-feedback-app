@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore'
 
 const LoginPage = () => import('../pages/LoginPage.vue')
 const RegisterPage = () => import('../pages/RegisterPage.vue')
-const MainLayout = () => import('../layouts/MainLayout.vue')
+const AppLayout = () => import('../layouts/AppLayout.vue')
 const StudentDashboardPage = () => import('../pages/StudentDashboardPage.vue')
 const ClassFeedbackTabPage = () => import('../pages/student_tabs/ClassFeedbackTabPage.vue')
 const StudentProfileTabPage = () => import('../pages/student_tabs/StudentProfileTabPage.vue')
@@ -17,7 +17,7 @@ const routes = [
   { path: '/register', name: 'Register', component: RegisterPage, meta: { requiresGuest: true } },
   {
     path: '/',
-    component: MainLayout,
+    component: AppLayout,
     meta: { requiresAuth: true },
     redirect: { name: 'WelcomePage' },
     children: [
