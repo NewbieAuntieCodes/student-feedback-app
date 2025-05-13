@@ -51,7 +51,7 @@
           <el-option label="已完成 (completed)" value="completed"></el-option>
         </el-select>
       </el-form-item>
-      <el-form-item label="需要关注" prop="needsAttention">
+      <el-form-item label="注意" prop="needsAttention">
         <el-switch v-model="profileForm.needsAttention" />
       </el-form-item>
       <el-form-item label="特别关注" prop="specialAttention">

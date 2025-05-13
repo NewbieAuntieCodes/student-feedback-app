@@ -20,16 +20,14 @@
         <div
           v-if="
             courseStore.isLoading ||
-            (activeCourses.length > 0 &&
-              studentStore.isLoadingAllActive &&
-              !allActiveStudentsLoadedOnce)
+            (studentStore.isLoadingAllActive && !allActiveStudentsLoadedOnce)
           "
           class="loading-placeholder"
         >
           <el-icon class="is-loading"><Loading /></el-icon> 加载中...
         </div>
-        <div v-else-if="activeCourses.length > 0">
-          <div v-for="course in activeCourses" :key="course._id" class="course-section">
+        <div v-else-if="coursesForOngoingSection.length > 0">
+          <div v-for="course in coursesForOngoingSection" :key="course._id" class="course-section">
             <div class="course-header-active">
               <span class="course-name-active" :title="course.name">{{ course.name }}</span>
               <el-tooltip content="添加学生到本课程" placement="top">
@@ -41,19 +39,15 @@
                   @click.stop="emitOpenAddStudentDialog(course)"
                   :icon="User"
                   class="add-student-btn-inline"
-                  data-testid="add-student-btn-inline"
                 />
               </el-tooltip>
             </div>
-            <div
-              v-if="studentStore.isLoadingAllActive && !studentsByCourseId(course._id).length"
-              class="loading-placeholder indented"
+            <ul
+              v-if="ongoingStudentsInCourse(course._id).length > 0"
+              class="student-list ongoing-students"
             >
-              <el-icon class="is-loading"><Loading /></el-icon> 学生加载中...
-            </div>
-            <ul v-else-if="studentsByCourseId(course._id).length > 0" class="student-list">
               <li
-                v-for="student in studentsByCourseId(course._id)"
+                v-for="student in ongoingStudentsInCourse(course._id)"
                 :key="student._id"
                 @click="selectStudent(course, student)"
                 :class="{ 'is-active': isActiveStudent(course._id, student._id) }"
@@ -67,33 +61,27 @@
                   }}</el-tag>
                 </span>
                 <span class="student-status-indicators">
-                  <el-tooltip v-if="student.status === 'learning'" content="进行中" placement="top">
-                    <span class="status-dot learning"></span>
-                  </el-tooltip>
-                  <el-tooltip
-                    v-if="student.status === 'completed'"
-                    content="已学完该课程"
-                    placement="top"
-                  >
-                    <span class="status-dot completed"></span>
-                  </el-tooltip>
-                  <el-tooltip v-if="student.needsAttention" content="需关注" placement="top">
-                    <el-icon color="#E6A23C" :size="14"><Warning /></el-icon>
-                  </el-tooltip>
-                  <el-tooltip v-if="student.specialAttention" content="特关注" placement="top">
-                    <el-icon color="#F56C6C" :size="14"><Star /></el-icon>
-                  </el-tooltip>
+                  <el-tooltip v-if="student.status === 'ongoing'" content="进行中" placement="top"
+                    ><span class="status-dot learning"></span
+                  ></el-tooltip>
+                  <el-tooltip v-if="student.needsAttention" content="需关注" placement="top"
+                    ><el-icon :size="16" class="status-icon needs-attention-icon"
+                      ><WarningFilled /></el-icon
+                  ></el-tooltip>
+                  <el-tooltip v-if="student.specialAttention" content="特关注" placement="top"
+                    ><el-icon :size="16" class="status-icon special-attention-icon"
+                      ><StarFilled /></el-icon
+                  ></el-tooltip>
                 </span>
               </li>
             </ul>
             <p
               v-else-if="
-                !studentStore.isLoadingAllActive ||
-                (studentStore.isLoadingAllActive && allActiveStudentsLoadedOnce)
+                !studentStore.isLoadingAllActive && ongoingStudentsInCourse(course._id).length === 0
               "
               class="no-students-placeholder indented"
             >
-              该课程暂无学生
+              该课程暂无进行中的学生
             </p>
           </div>
         </div>
@@ -101,37 +89,53 @@
       </div>
 
       <div class="course-group">
-        <h4 class="group-title">已完课</h4>
+        <h4 class="group-title">已完课学生</h4>
         <div
-          v-if="courseStore.isLoading && completedCourses.length === 0"
+          v-if="
+            courseStore.isLoading &&
+            coursesForCompletedSection.length === 0 &&
+            !allActiveStudentsLoadedOnce
+          "
           class="loading-placeholder"
         >
           <el-icon class="is-loading"><Loading /></el-icon> 加载中...
         </div>
         <el-collapse
-          v-else-if="completedCourses.length > 0"
+          v-else-if="coursesForCompletedSection.length > 0"
           v-model="completedCourseExpandedNames"
           @change="handleCompletedCourseExpand"
           accordion
         >
           <el-collapse-item
-            v-for="course in completedCourses"
-            :key="course._id"
+            v-for="course in coursesForCompletedSection"
+            :key="`completed-${course._id}`"
             :name="course._id"
             class="course-item"
           >
             <template #title>
-              <span class="course-name" :title="course.name">{{ course.name }}</span>
+              <span class="course-name" :title="course.name"
+                >{{ course.name }} ({{
+                  completedStudentsInCourse(course._id).length
+                }}
+                位已完成)</span
+              >
             </template>
             <div
-              v-if="studentStore.isLoading && courseToLoadStudents === course._id"
+              v-if="
+                studentStore.isLoading &&
+                courseToLoadStudents === course._id &&
+                completedStudentsInCourse(course._id).length === 0
+              "
               class="loading-placeholder indented"
             >
               <el-icon class="is-loading"><Loading /></el-icon> 加载学生...
             </div>
-            <ul v-else-if="studentsByCourseId(course._id).length > 0" class="student-list">
+            <ul
+              v-else-if="completedStudentsInCourse(course._id).length > 0"
+              class="student-list completed-students"
+            >
               <li
-                v-for="student in studentsByCourseId(course._id)"
+                v-for="student in completedStudentsInCourse(course._id)"
                 :key="student._id"
                 @click="selectStudent(course, student)"
                 :class="{ 'is-active': isActiveStudent(course._id, student._id) }"
@@ -145,48 +149,40 @@
                   }}</el-tag>
                 </span>
                 <span class="student-status-indicators">
-                  <el-tooltip
-                    v-if="student.status === 'learning'"
-                    content="进行中 (历史状态)"
-                    placement="top"
-                  >
-                    <span class="status-dot learning-history"></span>
-                  </el-tooltip>
-                  <el-tooltip
-                    v-if="student.status === 'completed'"
-                    content="已学完该课程"
-                    placement="top"
-                  >
-                    <span class="status-dot completed"></span>
-                  </el-tooltip>
-                  <el-tooltip v-if="student.needsAttention" content="需关注" placement="top">
-                    <el-icon color="#E6A23C" :size="14"><Warning /></el-icon>
-                  </el-tooltip>
-                  <el-tooltip v-if="student.specialAttention" content="特关注" placement="top">
-                    <el-icon color="#F56C6C" :size="14"><Star /></el-icon>
-                  </el-tooltip>
+                  <el-tooltip content="已学完" placement="top"
+                    ><span class="status-dot completed"></span
+                  ></el-tooltip>
+                  <el-tooltip v-if="student.needsAttention" content="需关注" placement="top"
+                    ><el-icon :size="16" class="status-icon needs-attention-icon"
+                      ><WarningFilled /></el-icon
+                  ></el-tooltip>
+                  <el-tooltip v-if="student.specialAttention" content="特关注" placement="top"
+                    ><el-icon :size="16" class="status-icon special-attention-icon"
+                      ><StarFilled /></el-icon
+                  ></el-tooltip>
                 </span>
               </li>
             </ul>
             <p
               v-else-if="
-                studentStore.allStudentsByCourse.hasOwnProperty(course._id) &&
-                studentsByCourseId(course._id).length === 0 &&
-                !(studentStore.isLoading && courseToLoadStudents === course._id)
+                !studentStore.isLoading &&
+                !(courseToLoadStudents === course._id) &&
+                completedStudentsInCourse(course._id).length === 0
               "
               class="no-students-placeholder indented"
             >
-              该课程暂无学生
-            </p>
-            <p
-              v-else-if="!(studentStore.isLoading && courseToLoadStudents === course._id)"
-              class="no-students-placeholder indented"
-            >
-              点击展开加载学生
+              该课程暂无已完成的学生 (或正在加载)
             </p>
           </el-collapse-item>
         </el-collapse>
-        <p v-else-if="!courseStore.isLoading" class="no-courses-placeholder">暂无已完课的课程</p>
+        <p
+          v-else-if="
+            !courseStore.isLoading || (courseStore.isLoading && allActiveStudentsLoadedOnce)
+          "
+          class="no-courses-placeholder"
+        >
+          暂无已完课的学生
+        </p>
       </div>
     </el-scrollbar>
   </el-aside>
@@ -204,16 +200,15 @@ import {
   ElCollapse,
   ElCollapseItem,
   ElIcon,
-  ElTag, // 新增 ElTag
-  ElTooltip, // 新增 ElTooltip
+  ElTag,
+  ElTooltip,
 } from 'element-plus'
 import {
   CirclePlus,
   Loading,
   User,
-  Warning, // 确保已导入
-  Star, // 确保已导入
-  // CircleCheckFilled, // 你可以用这个或者自定义的dot
+  WarningFilled, // 确保已导入实心图标
+  StarFilled, // 确保已导入实心图标
 } from '@element-plus/icons-vue'
 
 const courseStore = useCourseStore()
@@ -221,23 +216,45 @@ const studentStore = useStudentStore()
 const router = useRouter()
 const route = useRoute()
 
-const activeCourses = computed(() => courseStore.activeCourses)
-const completedCourses = computed(() => courseStore.completedCourses)
+// --- 状态和 Refs ---
+const allActiveStudentsLoadedOnce = ref(false) // 跟踪“正在上课”的学生是否已至少完成一次批量加载
+const completedCourseExpandedNames = ref('') // 用于“已完课学生”区域的课程折叠项 v-model
+const courseToLoadStudents = ref(null) // 用于懒加载“已完课学生”区域中，本身是 completed 状态课程的学生
 
-// 用于跟踪“正在上课”的学生是否已至少完成一次批量加载的标记
-const allActiveStudentsLoadedOnce = ref(false) // 新增
-
-// activeCourseExpandedNames 不再需要，因为“正在上课”课程不再是折叠项
-const completedCourseExpandedNames = ref('') // 仅用于“已完课”课程的折叠
-
-const courseToLoadStudents = ref(null) // 用于“已完课”课程的学生懒加载
-
-const studentsByCourseId = (courseId) => {
+// --- 辅助函数 ---
+// 获取指定课程下的所有学生 (从 store)
+const getStudentsInCourseFromStore = (courseId) => {
   if (!courseId) return []
-  return studentStore.studentsInCourse(courseId)
+  return studentStore.studentsInCourse(courseId) // 假设 studentStore.studentsInCourse(courseId) 返回原始学生数组
 }
 
-// 监听 studentStore.isLoadingAllActive 状态，以更新 allActiveStudentsLoadedOnce
+// 获取指定课程下的进行中学生
+const ongoingStudentsInCourse = (courseId) => {
+  return getStudentsInCourseFromStore(courseId).filter((student) => student.status === 'ongoing')
+}
+
+// 获取指定课程下的已完成学生
+const completedStudentsInCourse = (courseId) => {
+  return getStudentsInCourseFromStore(courseId).filter((student) => student.status === 'completed')
+}
+
+// --- 计算属性 ---
+// “正在上课”区域显示的课程 (课程本身 active 且至少有1个 ongoing 学生)
+const coursesForOngoingSection = computed(() => {
+  return courseStore.activeCourses.filter((course) => {
+    return ongoingStudentsInCourse(course._id).length > 0
+  })
+})
+
+// “已完课学生”区域显示的课程 (任何课程，只要它至少有1个 completed 学生)
+const coursesForCompletedSection = computed(() => {
+  return courseStore.courses.filter((course) => {
+    // 检查所有课程
+    return completedStudentsInCourse(course._id).length > 0
+  })
+})
+
+// --- 方法 ---
 watch(
   () => studentStore.isLoadingAllActive,
   (newValue, oldValue) => {
@@ -247,53 +264,49 @@ watch(
   },
 )
 
-// `handleCompletedCourseExpand` 函数基本保持不变，它用于懒加载“已完课”课程的学生
 const handleCompletedCourseExpand = async (expandedCourseIdArrayOrId) => {
-  // ElCollapse 在 accordion 模式下，change 事件的参数是当前展开项的 name (string) 或空字符串 (如果都折叠了)
-  // 非 accordion 模式下是 name 组成的数组。 此处 v-model 对应 accordion，所以是 string
   const courseId = Array.isArray(expandedCourseIdArrayOrId)
-    ? expandedCourseIdArrayOrId[0] // 虽然不太可能在 accordion 模式下是数组，但做个兼容
+    ? expandedCourseIdArrayOrId[0]
     : expandedCourseIdArrayOrId
 
-  completedCourseExpandedNames.value = courseId || '' // 更新 v-model 绑定的值
+  completedCourseExpandedNames.value = courseId || ''
 
   if (courseId) {
-    const course = completedCourses.value.find((c) => c._id === courseId)
+    const course = courseStore.courses.find((c) => c._id === courseId) // 从所有课程中查找
     if (course) {
-      // 检查该课程的学生是否已加载
-      // 并且确保不是正在为这个课程加载学生
-      const studentsAlreadyLoaded =
-        studentStore.allStudentsByCourse[course._id] &&
-        studentStore.allStudentsByCourse[course._id].length > 0
-      const studentsAttemptedButEmpty =
-        studentStore.allStudentsByCourse.hasOwnProperty(course._id) &&
-        studentStore.allStudentsByCourse[course._id].length === 0
-
-      if (
-        !studentsAlreadyLoaded &&
-        !studentsAttemptedButEmpty && // 仅当学生数据完全不存在时才加载
+      // 只有当这个课程本身是 'completed' 状态，并且其学生数据尚未加载时，才尝试懒加载
+      // 对于 active 课程，其学生（包括 completed 的）应该已经通过 fetchAllStudentsForCourses 加载了
+      const studentsInStore = getStudentsInCourseFromStore(course._id)
+      const needsLazyLoad =
+        course.status === 'completed' &&
+        !studentStore.allStudentsByCourse.hasOwnProperty(course._id) &&
         courseToLoadStudents.value !== course._id
-      ) {
+
+      // 或者，如果课程是 completed，且本地虽有记录但学生列表为空，也可能需要重新尝试加载
+      const needsRetryLoadForEmptyCompleted =
+        course.status === 'completed' &&
+        studentStore.allStudentsByCourse.hasOwnProperty(course._id) &&
+        studentsInStore.length === 0 &&
+        courseToLoadStudents.value !== course._id
+
+      if (needsLazyLoad || needsRetryLoadForEmptyCompleted) {
         courseToLoadStudents.value = course._id
         console.log(
-          `[AppSidebar] Lazily fetching students for completed course: ${course.name} (ID: ${course._id})`,
+          `[AppSidebar] Lazily fetching students for completed course in '已完课学生' section: ${course.name} (ID: ${course._id})`,
         )
         try {
           await studentStore.fetchStudentsInCourseAndSetCurrent(course._id, null)
           console.log(`[AppSidebar] Students fetched for ${course.name}`)
         } catch (error) {
-          console.error(
-            `[AppSidebar] Error fetching students for completed course ${course._id}:`,
-            error,
-          )
+          console.error(`[AppSidebar] Error fetching students for course ${course._id}:`, error)
         } finally {
           if (courseToLoadStudents.value === course._id) {
             courseToLoadStudents.value = null
           }
         }
-      } else if (studentsAlreadyLoaded || studentsAttemptedButEmpty) {
+      } else {
         console.log(
-          `[AppSidebar] Students for completed course ${course.name} already loaded or list is known to be empty.`,
+          `[AppSidebar] Students for course ${course.name} in '已完课学生' section already loaded or course is active.`,
         )
       }
     }
@@ -309,18 +322,8 @@ const selectStudent = (course, student) => {
     console.error('[AppSidebar] Invalid course or student object for navigation.')
     return
   }
-  // Pinia store 更新应当由路由同步逻辑 (useRouteCourseSync) 或页面自身处理，这里只负责导航
-  // if (courseStore.selectedCourse?._id !== course._id) {
-  //   courseStore.setCurrentCourse(course); // setCurrentCourse 应该只设置，不触发额外加载
-  // }
-  // if (studentStore.selectedStudent?._id !== student._id) {
-  //   studentStore.setCurrentStudent(student);
-  // }
-
   router.push({
-    // 假设你的学生详情页路由名称是 'StudentDashboardPage' 或类似，并且它会重定向到第一个tab
-    // 或者直接导航到第一个tab的路由名称
-    name: 'StudentClassFeedback', // 确保这是你学生反馈tab的路由名称
+    name: 'StudentClassFeedback',
     params: { courseId: course._id, studentId: student._id },
   })
 }
@@ -333,52 +336,38 @@ const emitOpenCreateCourseDialog = () => {
 
 const emitOpenAddStudentDialog = (course) => {
   if (course && course._id) {
-    // AppLayout 会监听这个事件，并把 course 传给 AddStudentModal
-    // 可以在 AddStudentModal 打开时，将此 course 设置为默认选中课程
-    // courseStore.setCurrentCourse(course); // 可选：如果添加学生时希望课程面板也同步更新选中的课程
     emit('open-add-student-dialog', course)
   } else {
     console.error('[AppSidebar] Cannot open add student dialog, course data is invalid.', course)
   }
 }
 
-// 当路由变化时，确保“已完课”课程的折叠状态与当前选中的学生对应课程一致
 watch(
   () => route.params,
   (newParams) => {
     if (newParams.courseId) {
-      const targetCourseIsCompleted = completedCourses.value.some(
+      const targetCourseInCompletedSection = coursesForCompletedSection.value.find(
         (c) => c._id === newParams.courseId,
       )
-      if (targetCourseIsCompleted) {
+      if (targetCourseInCompletedSection) {
         if (completedCourseExpandedNames.value !== newParams.courseId) {
           completedCourseExpandedNames.value = newParams.courseId
-          // 如果学生数据未加载 (例如直接通过URL访问)，则触发加载
-          // 检查 allStudentsByCourse[newParams.courseId] 是否存在且有内容
-          const studentsForCompletedCourse = studentStore.allStudentsByCourse[newParams.courseId]
-          if (!studentsForCompletedCourse || studentsForCompletedCourse.length === 0) {
-            // 进一步检查是否是因为尚未尝试加载
-            if (!studentStore.allStudentsByCourse.hasOwnProperty(newParams.courseId)) {
-              handleCompletedCourseExpand(newParams.courseId)
-            }
+          const students = getStudentsInCourseFromStore(newParams.courseId)
+          // 如果课程本身是 completed 状态，且学生未加载，则触发懒加载
+          if (
+            targetCourseInCompletedSection.status === 'completed' &&
+            students.length === 0 &&
+            !studentStore.allStudentsByCourse.hasOwnProperty(newParams.courseId)
+          ) {
+            handleCompletedCourseExpand(newParams.courseId)
           }
         }
-      } else {
-        // 如果选中的学生属于一个“正在上课”的课程，则不需要操作折叠面板
-        // 也可以选择性地折叠所有“已完课”课程
-        // completedCourseExpandedNames.value = ''; // 可选
       }
-    } else {
-      // 没有选中课程，可以折叠所有“已完课”
-      // completedCourseExpandedNames.value = ''; // 可选
     }
   },
-  { immediate: true, deep: true }, // immediate: true 确保组件加载时基于当前路由设置状态
+  { immediate: true, deep: true },
 )
 
-// 组件挂载时，确保课程数据被加载。
-// 最佳实践是在 App.vue 或布局组件中统一进行初始数据加载。
-// 此处作为一个补充或后备。
 onMounted(async () => {
   if (courseStore.courses.length === 0 && !courseStore.isLoading) {
     console.log(
@@ -386,24 +375,21 @@ onMounted(async () => {
     )
     await courseStore.fetchUserCourses({ loadStudentsForActive: true })
   } else if (
-    activeCourses.value.length > 0 &&
+    courseStore.activeCourses.length > 0 &&
     !studentStore.isLoadingAllActive &&
     !allActiveStudentsLoadedOnce.value
   ) {
-    // 如果课程已存在，但“正在上课”的学生数据可能未加载（例如，在 fetchUserCourses 时 loadStudentsForActive 为 false）
-    // 则再次尝试加载“正在上课”课程的学生
     console.log(
       '[AppSidebar onMounted] Active courses exist, ensuring their students are loaded...',
     )
-    const activeCourseIds = activeCourses.value.map((c) => c._id)
+    const activeCourseIds = courseStore.activeCourses.map((c) => c._id)
     const needsLoading = activeCourseIds.some((id) => !studentStore.allStudentsByCourse[id])
     if (needsLoading) {
       await studentStore.fetchAllStudentsForCourses(activeCourseIds)
     } else {
-      allActiveStudentsLoadedOnce.value = true // 如果所有学生都已存在，也标记为已加载过
+      allActiveStudentsLoadedOnce.value = true
     }
-  } else if (studentStore.isLoadingAllActive === false && activeCourses.value.length > 0) {
-    // 如果 studentStore.isLoadingAllActive 已经是 false，说明加载尝试已完成，标记一下
+  } else if (studentStore.isLoadingAllActive === false && courseStore.activeCourses.length > 0) {
     allActiveStudentsLoadedOnce.value = true
   }
 })
@@ -577,15 +563,58 @@ onMounted(async () => {
 .student-status-indicators {
   display: flex;
   align-items: center;
-  gap: 6px; /* 图标间距 */
-  margin-left: 8px; /* 和学生信息隔开 */
+  gap: 7px; /* 图标间距可以稍微调整 */
+  margin-left: 8px;
   flex-shrink: 0;
 }
+.status-icon {
+  /* 通用状态图标样式 */
+  vertical-align: middle; /* 确保垂直居中对齐 */
+}
+
+.needs-attention-icon svg {
+  /* 针对 WarningFilled 内部的 svg */
+  /* Element Plus 的 WarningFilled 默认是黄色感叹号在黄色背景三角中 */
+  /* 如果想自定义颜色，可能需要更复杂的SVG操作或使用自定义SVG图标 */
+  /* 简单的颜色覆盖可能不直接生效在多路径SVG上 */
+  /* 我们可以尝试直接给 el-icon 设置颜色，WarningFilled 应该会继承 */
+}
+.needs-attention-icon {
+  color: rgb(255, 190, 12); /* 设置 WarningFilled 图标的整体颜色为黄色 */
+  /* 如果想让感叹号本身红色，而背景黄色，需要自定义SVG或覆盖更深层的CSS，
+     对于 Element Plus Icons，直接修改内部path颜色比较困难。
+     一个折中的办法是给它一个黄色的圆形背景，然后图标本身是警告色。
+  */
+}
+.needs-attention-icon.custom-warning-bg {
+  /* 一个自定义背景的尝试 */
+  background-color: rgba(255, 236, 180, 0.7); /* 淡黄色背景 */
+  border-radius: 50%;
+  padding: 2px; /* 给背景一点空间 */
+  display: inline-flex; /* 配合 padding 和 border-radius */
+  align-items: center;
+  justify-content: center;
+  width: 20px; /* 固定大小 */
+  height: 20px;
+}
+.needs-attention-icon.custom-warning-bg .el-icon svg {
+  /* color: #F56C6C; */ /* 尝试让内部感叹号红色，可能无效 */
+}
+
+.special-attention-icon {
+  color: #f84f4f; /* 直接将 StarFilled 设置为红色 */
+}
+
+/* 如果想实现更复杂的背景和前景分离的图标效果（例如黄底红感叹号），
+   最佳方式是使用自定义的 SVG 图标，而不是依赖覆盖 Element Plus 默认图标的颜色。
+   对于“特别关注五角星变成红底实心的”，StarFilled 本身就是实心的，设置 color: #F56C6C 即可。
+*/
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px; /* 稍微增大一点 */
+  height: 9px;
   border-radius: 50%;
   display: inline-block;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.2); /* 加一点阴影使其更突出 */
 }
 .status-dot.learning {
   background-color: #67c23a; /* 绿色 - 进行中 */

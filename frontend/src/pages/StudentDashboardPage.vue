@@ -55,40 +55,71 @@ const currentStudentName = computed(() => studentStore.selectedStudent?.name || 
 const currentCourseName = computed(() => courseStore.selectedCourse?.name || '未知课程')
 
 const updateActiveTabFromRoute = () => {
-  // console.log(`StudentDashboardPage: updateActiveTabFromRoute triggered. Route name: ${route.name}`);
-  // console.log(`StudentDashboardPage: Props received: courseId=${props.courseId}, studentId=${props.studentId}`);
-  // console.log(`StudentDashboardPage: Store state: selectedCourseId=${courseStore.selectedCourse?._id}, selectedStudentId=${studentStore.selectedStudent?._id}`);
+  // console.log(`[StudentDashboardPage] updateActiveTabFromRoute triggered. Route name: ${route.name}`);
+  // console.log(`[StudentDashboardPage] Props received: courseId=${props.courseId}, studentId=${props.studentId}`);
+  // console.log(`[StudentDashboardPage] Store state: selectedCourseId=${courseStore.selectedCourse?._id}, selectedStudentId=${studentStore.selectedStudent?._id}`);
 
+  // 1. 同步当前课程
   if (
     props.courseId &&
     (!courseStore.selectedCourse || courseStore.selectedCourse._id !== props.courseId)
   ) {
-    // console.warn(`StudentDashboardPage: Course data for ${props.courseId} (props) mismatched/missing in store (selectedCourse ID: ${courseStore.selectedCourse?._id}). Attempting to find in list.`);
+    // console.warn(`[StudentDashboardPage] Course data for ${props.courseId} (props) mismatched/missing in store. Attempting to find in userCourses list.`);
+    console.log(
+      '[StudentDashboardPage] courseStore.userCourses before find:',
+      JSON.parse(JSON.stringify(courseStore.userCourses)),
+    ) // 调试输出：查看 userCourses 的内容
+
     const courseFromList = courseStore.userCourses.find((c) => c._id === props.courseId)
+
     if (courseFromList) {
-      // console.log('StudentDashboardPage: Found course in userCourses, setting it.');
+      // console.log('[StudentDashboardPage] Found course in userCourses, setting it as current:', JSON.parse(JSON.stringify(courseFromList)));
       courseStore.setCurrentCourse(courseFromList)
     } else {
-      // console.warn('StudentDashboardPage: Course not found in courseStore.userCourses list. MainLayout should handle fetching.');
+      // console.warn(`[StudentDashboardPage] Course with ID ${props.courseId} not found in courseStore.userCourses. This might be okay if MainLayout/AppInit handles fetching it later or if it's a new course not yet in the list.`);
     }
   }
 
+  // 2. 同步当前学生 (基于已同步或已存在的 selectedCourse)
   if (
     props.studentId &&
     (!studentStore.selectedStudent || studentStore.selectedStudent._id !== props.studentId)
   ) {
-    // console.warn(`StudentDashboardPage: Student data for ${props.studentId} (props) mismatched/missing in store (selectedStudent ID: ${studentStore.selectedStudent?._id}). Attempting to find in list.`);
-    const studentFromList = studentStore.studentsInCurrentCourse.find(
-      (s) => s._id === props.studentId,
-    )
-    if (studentFromList) {
-      // console.log('StudentDashboardPage: Found student in studentsInCurrentCourse, setting it.');
-      studentStore.setCurrentStudent(studentFromList)
+    // console.warn(`[StudentDashboardPage] Student data for ${props.studentId} (props) mismatched/missing in store. Attempting to find in studentsInCurrentCourse list.`);
+
+    // 确保 courseStore.selectedCourse 是最新的，因为 studentsInCurrentCourse 依赖它
+    const currentSelectedCourse = courseStore.selectedCourse
+    if (currentSelectedCourse && currentSelectedCourse._id === props.courseId) {
+      // 再次确认课程ID匹配
+      const currentCourseStudents = studentStore.studentsInCurrentCourse // 这个 getter 现在应该总是返回数组
+
+      console.log(
+        `[StudentDashboardPage] studentStore.studentsInCurrentCourse for course ${props.courseId} before find:`,
+        JSON.parse(JSON.stringify(currentCourseStudents)),
+      ) // 调试输出
+
+      if (Array.isArray(currentCourseStudents)) {
+        const studentFromList = currentCourseStudents.find((s) => s._id === props.studentId)
+
+        if (studentFromList) {
+          // console.log('[StudentDashboardPage] Found student in studentsInCurrentCourse, setting it as current:', JSON.parse(JSON.stringify(studentFromList)));
+          studentStore.setCurrentStudent(studentFromList)
+        } else {
+          // console.warn(`[StudentDashboardPage] Student with ID ${props.studentId} not found in students for course ${props.courseId}. The student list might be empty or student doesn't belong to this course according to current store state.`);
+        }
+      } else {
+        // 理论上，由于 getter 的修改，这里不应该再是 undefined，而应该是 []
+        console.error(
+          '[StudentDashboardPage] studentStore.studentsInCurrentCourse did NOT return an array. Value:',
+          currentCourseStudents,
+        )
+      }
     } else {
-      // console.warn('StudentDashboardPage: Student not found in studentStore.studentsInCurrentCourse list. MainLayout should handle fetching for current course.');
+      // console.warn(`[StudentDashboardPage] Cannot find student because current selected course in store (ID: ${currentSelectedCourse?._id}) does not match props.courseId (${props.courseId}). Waiting for course to sync.`);
     }
   }
 
+  // 3. 根据当前路由名称更新激活的 tab
   const routeName = route.name
   if (routeName === 'StudentClassFeedback') {
     activeTabName.value = 'feedback'
@@ -97,7 +128,7 @@ const updateActiveTabFromRoute = () => {
   } else if (routeName === 'StudentMonthlySummaryTab') {
     activeTabName.value = 'summary'
   }
-  // console.log(`StudentDashboardPage: Active tab set to: ${activeTabName.value}`);
+  // console.log(`[StudentDashboardPage] Active tab set to: ${activeTabName.value}`);
 }
 
 onMounted(() => {
