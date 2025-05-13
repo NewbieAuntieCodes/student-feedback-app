@@ -3,6 +3,9 @@ const Course = require("../models/Course"); // 引入 Course 模型
 const User = require("../models/User"); // 引入 User 模型 (虽然这里直接用 req.user.id，但有时可能需要)
 const mongoose = require("mongoose");
 
+const Student = require("../models/Student"); // 确保引入 Student 模型
+const Feedback = require("../models/Feedback"); // 确保引入 Feedback 模型
+
 // @desc    创建新课程
 // @route   POST /api/courses
 // @access  Private (需要用户登录)
@@ -206,6 +209,26 @@ exports.deleteCourse = async (req, res) => {
       return res.status(403).json({ message: "无权删除该课程" });
     }
 
+    // --- 新增：处理关联数据 ---
+    const courseId = req.params.id;
+
+    // 1. 处理关联的学生 (示例：假设 Student 有一个 course 字段)
+    //    您可能需要将学生的 course 字段设为 null，或从一个数组中移除 courseId
+    //    或者，如果业务逻辑是删除学生，则执行删除操作。
+    //    具体操作取决于您的业务需求。
+    // 示例：从所有学生的 enrolledCourses 数组中移除此课程ID
+    await Student.updateMany(
+      { enrolledCourses: courseId }, // 找到所有注册了此课程的学生
+      { $pull: { enrolledCourses: courseId } } // 从他们的课程数组中移除此课程ID
+    );
+    // 或者，如果学生只与一个课程关联，并且删除课程意味着学生不再有效（这不常见）
+    // await Student.deleteMany({ course: courseId });
+
+    // 2. 处理关联的反馈 (示例：假设 Feedback 有一个 courseId 字段)
+    await Feedback.deleteMany({ course: courseId }); // 删除所有与此课程相关的反馈
+
+    // --- 关联数据处理结束 ---
+
     // 5. 删除课程
     // await course.remove(); // remove() is deprecated in Mongoose v6+, use deleteOne() or findByIdAndDelete()
     // 使用 findByIdAndDelete 更直接，或者在找到的 course 实例上调用 deleteOne()
@@ -213,11 +236,7 @@ exports.deleteCourse = async (req, res) => {
     // 或者: await course.deleteOne(); (如果你想在 course 实例上操作)
 
     // 6. 返回成功响应
-    res
-      .status(200)
-      .json({ message: "课程删除成功！", courseId: req.params.id });
-    // 对于 DELETE 操作，也可以返回 204 No Content 状态码，并且不带响应体
-    // res.status(204).send();
+    res.status(200).json({ message: "课程删除成功！", courseId: courseId }); // 返回被删除课程的 ID 可能会对前端更新 UI 有帮助
   } catch (error) {
     console.error("删除课程错误:", error);
     res.status(500).json({ message: "服务器内部错误，删除课程失败" });

@@ -91,10 +91,14 @@ export const useStudentStore = defineStore('student', {
       }
     },
     setCurrentStudent(student) {
+      console.log('[studentStore] setCurrentStudent called with:', student)
       this.currentStudent = student
     },
     clearStudentsAndCurrent() {
+      this.students = [] // 或者 this.allStudentsByCourse = {} 等具体实现
       this.currentStudent = null
+      this.isLoading = false // 重置加载状态
+      this.error = null
     },
     removeStudentsForCourse(courseId) {
       if (this.allStudentsByCourse[courseId]) {

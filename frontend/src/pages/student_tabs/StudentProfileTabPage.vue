@@ -197,14 +197,14 @@ onMounted(() => {
   // MainLayout.vue 的 onMounted 或 watch 应该负责从API加载并填充 store,
   // 然后这里的 watch 就会响应。
   if (!props.studentId) {
-    console.log('StudentProfileTabPage: No studentId prop on mount.')
+    // console.log('StudentProfileTabPage: No studentId prop on mount.')
   } else if (
     !studentStore.selectedStudent ||
     studentStore.selectedStudent._id !== props.studentId
   ) {
-    console.log(
-      `StudentProfileTabPage: studentId prop is ${props.studentId}, selected student in store is ${studentStore.selectedStudent?._id}. Waiting for store update or MainLayout to set.`,
-    )
+    // console.log(
+    //   `StudentProfileTabPage: studentId prop is ${props.studentId}, selected student in store is ${studentStore.selectedStudent?._id}. Waiting for store update or MainLayout to set.`,
+    // )
     // 这里可以考虑，如果 MainLayout 没有在导航前设置好 selectedStudent，
     // 此组件是否应该自己尝试从 studentStore.studentsInCurrentCourse 查找 (如果列表已加载)
     // 但通常父组件或导航逻辑应该保证 props 对应的核心数据在 store 中就绪。
