@@ -1,3 +1,4 @@
+//backend/controllers/courseController.js
 const Course = require("../models/Course"); // 引入 Course 模型
 const User = require("../models/User"); // 引入 User 模型 (虽然这里直接用 req.user.id，但有时可能需要)
 const mongoose = require("mongoose");
@@ -116,35 +117,49 @@ exports.getCourseById = async (req, res) => {
 // @access  Private
 exports.updateCourse = async (req, res) => {
   try {
-    // 1. 从请求体中获取要更新的课程名称
-    const { name } = req.body;
+    // 1. 从请求体中获取要更新的课程名称和状态
+    const { name, status } = req.body;
 
-    // 2. 简单验证新的课程名称是否存在
-    if (!name) {
-      return res.status(400).json({ message: "请输入要更新的课程名称" });
+    // 2. 验证：确保至少有一个要更新的字段，并且 status 值有效
+    if (!name && !status) {
+      return res.status(400).json({ message: "请输入要更新的课程名称或状态" });
     }
 
-    // 3. 检查传入的 ID 是否是合法的 MongoDB ObjectId
+    if (status && !["active", "completed"].includes(status)) {
+      // <--- 校验 status 值
+      return res
+        .status(400)
+        .json({ message: "无效的课程状态值。只允许 'active' 或 'completed'" });
+    }
+
+    // 3. 检查传入的 ID 是否是合法的 MongoDB ObjectId (这部分逻辑已存在，保持)
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return res.status(400).json({ message: "无效的课程ID格式" });
     }
 
-    // 4. 根据 ID 查找课程
+    // 4. 根据 ID 查找课程 (这部分逻辑已存在，保持)
     let course = await Course.findById(req.params.id);
 
-    // 5. 如果课程不存在
+    // 5. 如果课程不存在 (这部分逻辑已存在，保持)
     if (!course) {
       return res.status(404).json({ message: "未找到该课程" });
     }
 
-    // 6. 验证该课程是否属于当前登录用户
+    // 6. 验证该课程是否属于当前登录用户 (这部分逻辑已存在，保持)
     if (course.user.toString() !== req.user.id) {
       return res.status(403).json({ message: "无权修改该课程" });
     }
 
     // 7. 更新课程信息
-    course.name = name;
-    // 如果将来还有其他字段需要更新，也在这里设置，例如: course.description = description;
+    if (name) {
+      // 只有当请求中提供了 name 时才更新
+      course.name = name;
+    }
+    if (status) {
+      // 只有当请求中提供了 status 时才更新
+      course.status = status;
+    }
+    // 如果将来还有其他字段需要更新，也在这里类似处理
 
     // 8. 保存更新后的课程
     const updatedCourse = await course.save();

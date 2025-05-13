@@ -1,3 +1,4 @@
+//src/components/student/StudentListMenu.vue
 <template>
   <el-scrollbar style="flex-grow: 1" class="student-list-menu-scrollbar">
     <div v-if="isLoadingCourses && (!courses || courses.length === 0)" class="placeholder-text">

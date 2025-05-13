@@ -4,11 +4,13 @@ import * as studentService from '../services/studentService'
 
 export const useStudentStore = defineStore('student', {
   state: () => ({
-    students: [],
+    // students: [], // 旧的：只存储当前课程的学生
+    allStudentsByCourse: {}, // 新的：以 courseId 为键，存储每个课程的学生数组
+    // 例如: { 'courseId1': [studentA, studentB], 'courseId2': [studentC] }
     currentStudent: null,
-    isLoading: false,
+    isLoading: false, // 用于加载单个课程的学生
+    isLoadingAllActive: false, // 用于批量加载 active 课程的学生
     error: null,
-    // ... (其他状态保持不变)
     isUpdating: false,
     updateError: null,
     isAddingStudent: false,
@@ -17,38 +19,84 @@ export const useStudentStore = defineStore('student', {
     deleteStudentError: null,
   }),
   getters: {
-    studentsInCurrentCourse: (state) => state.students,
+    studentsInCourse: (state) => (courseId) => {
+      return state.allStudentsByCourse[courseId] || [] // <--- 关键在这里，如果找不到，返回空数组
+    },
     selectedStudent: (state) => state.currentStudent,
+    // 可以保留一个基于 currentCourse (如果 courseStore 还维护它) 的 getter，或者让组件直接用 getStudentsByCourseId
+    // studentsInCurrentSelectedCourse: (state) => {
+    //   const courseStore = useCourseStore(); // 需要在 getter 内部获取，但要注意循环依赖风险和性能
+    //   if (courseStore.selectedCourse?._id) {
+    //     return state.allStudentsByCourse[courseStore.selectedCourse._id] || [];
+    //   }
+    //   return [];
+    // }
   },
   actions: {
-    // 用于根据路由参数或课程选择来加载学生并设置当前学生
+    // 新增 Action: 批量获取指定课程列表的学生
+    async fetchAllStudentsForCourses(courseIds) {
+      if (!courseIds || courseIds.length === 0) return
+      this.isLoadingAllActive = true
+      this.error = null // 可以用一个特定的 error for batch loading
+      try {
+        // 并行获取所有这些课程的学生
+        const promises = courseIds.map((courseId) =>
+          studentService
+            .fetchStudentsInCourse(courseId)
+            .then((response) => ({ courseId, students: response.data?.students || [] }))
+            .catch((err) => {
+              console.error(`Failed to fetch students for course ${courseId}:`, err)
+              return { courseId, students: [] } // 出错时返回空数组
+            }),
+        )
+        const results = await Promise.all(promises)
+
+        results.forEach((result) => {
+          this.allStudentsByCourse[result.courseId] = result.students
+        })
+      } catch (err) {
+        // 这个 catch 主要用于 Promise.all 本身的错误，单个请求的错误在上面已处理
+        this.error = '批量获取学生列表时发生错误'
+        console.error('fetchAllStudentsForCourses error:', err)
+      } finally {
+        this.isLoadingAllActive = false
+      }
+    },
+
+    // 修改: 用于加载特定课程的学生（可以是 active 或按需加载的 completed）并设置当前学生
     async fetchStudentsInCourseAndSetCurrent(courseId, studentIdToSelect = null) {
       if (!courseId) {
-        this.students = []
+        // this.students = []; // 不再直接修改旧的 students
+        this.allStudentsByCourse[courseId] = [] // 确保该课程的列表存在且为空
         this.currentStudent = null
         this.error = '未提供课程ID'
         return
       }
-      this.isLoading = true
+      this.isLoading = true // 表示正在加载这个特定课程的学生
       this.error = null
       try {
         const response = await studentService.fetchStudentsInCourse(courseId)
         if (response.data && response.data.students) {
-          this.students = response.data.students
-          if (studentIdToSelect && this.students.some((s) => s._id === studentIdToSelect)) {
-            this.currentStudent = this.students.find((s) => s._id === studentIdToSelect) || null
+          this.allStudentsByCourse[courseId] = response.data.students // 存入新的 state 结构
+
+          if (
+            studentIdToSelect &&
+            this.allStudentsByCourse[courseId].some((s) => s._id === studentIdToSelect)
+          ) {
+            this.currentStudent =
+              this.allStudentsByCourse[courseId].find((s) => s._id === studentIdToSelect) || null
           } else {
-            this.currentStudent = null // 如果学生ID无效或未提供，则不选择任何学生
+            this.currentStudent = null
           }
         } else {
-          this.students = []
+          this.allStudentsByCourse[courseId] = []
           this.currentStudent = null
         }
       } catch (err) {
-        this.error = err.response?.data?.message || '获取学生列表失败'
-        this.students = []
+        this.error = err.response?.data?.message || `获取课程 ${courseId} 的学生列表失败`
+        this.allStudentsByCourse[courseId] = []
         this.currentStudent = null
-        console.error('fetchStudentsInCourseAndSetCurrent error:', err)
+        console.error(`WorkspaceStudentsInCourseAndSetCurrent for course ${courseId} error:`, err)
       } finally {
         this.isLoading = false
       }
@@ -59,20 +107,25 @@ export const useStudentStore = defineStore('student', {
     },
 
     clearStudentsAndCurrent() {
-      this.students = []
+      // this.students = []; // 不再使用
+      // 当课程选择被清除时，我们可能不需要清空 allStudentsByCourse，因为那些数据可能仍然有用
+      // 除非是登出等场景。这里主要清空当前选中的学生。
       this.currentStudent = null
-      this.error = null // 也清除错误状态
-      this.isLoading = false
-    },
-    clearStudents() {
-      // 保留旧的，如果其他地方只希望清空列表而不影响当前学生
-      this.students = []
-      // this.currentStudent = null
-      this.error = null
-      this.isLoading = false
+      // this.error = null; // 根据需要清除
+      // this.isLoading = false;
     },
 
-    // ... (addStudentToCourse, updateStudentDetails, deleteStudent actions 保持不变或微调)
+    // 新增 Action: 当课程被删除时，从 state 中移除该课程的学生数据
+    removeStudentsForCourse(courseId) {
+      if (this.allStudentsByCourse[courseId]) {
+        delete this.allStudentsByCourse[courseId]
+      }
+      if (this.currentStudent && this.currentStudent.course === courseId) {
+        // 假设学生对象有 course 属性
+        this.currentStudent = null
+      }
+    },
+
     async addStudentToCourse(courseId, studentData) {
       if (!courseId) {
         this.addStudentError = '未提供课程ID以添加学生'
@@ -83,8 +136,12 @@ export const useStudentStore = defineStore('student', {
       try {
         const response = await studentService.addStudentToCourse(courseId, studentData)
         if (response.data && response.data.student) {
-          this.students.unshift(response.data.student) // 添加到列表顶部
-          return response.data.student
+          const newStudent = response.data.student
+          if (!this.allStudentsByCourse[courseId]) {
+            this.allStudentsByCourse[courseId] = []
+          }
+          this.allStudentsByCourse[courseId].unshift(newStudent)
+          return newStudent
         }
         this.addStudentError = '添加学生成功，但服务器响应格式不正确。'
         return null
@@ -98,6 +155,7 @@ export const useStudentStore = defineStore('student', {
     },
 
     async updateStudentDetails(courseId, studentId, studentDataToUpdate) {
+      // ... (逻辑类似，但要更新 allStudentsByCourse[courseId] 中的学生)
       if (!courseId || !studentId) {
         this.updateError = '未提供课程或学生ID用于更新'
         return false
@@ -112,14 +170,21 @@ export const useStudentStore = defineStore('student', {
         )
         if (response.data && response.data.student) {
           const updatedStudent = response.data.student
-          const indexInList = this.students.findIndex((s) => s._id === updatedStudent._id)
-          if (indexInList !== -1) {
-            this.students[indexInList] = { ...this.students[indexInList], ...updatedStudent }
+          if (this.allStudentsByCourse[courseId]) {
+            const indexInList = this.allStudentsByCourse[courseId].findIndex(
+              (s) => s._id === updatedStudent._id,
+            )
+            if (indexInList !== -1) {
+              this.allStudentsByCourse[courseId][indexInList] = {
+                ...this.allStudentsByCourse[courseId][indexInList],
+                ...updatedStudent,
+              }
+            }
           }
           if (this.currentStudent && this.currentStudent._id === updatedStudent._id) {
             this.currentStudent = { ...this.currentStudent, ...updatedStudent }
           }
-          return updatedStudent // 返回更新后的学生对象
+          return updatedStudent
         }
         this.updateError = '更新学生信息成功，但服务器响应格式不正确。'
         return false
@@ -133,6 +198,7 @@ export const useStudentStore = defineStore('student', {
     },
 
     async deleteStudent(courseId, studentId) {
+      // ... (逻辑类似，从 allStudentsByCourse[courseId] 中移除学生)
       if (!courseId || !studentId) {
         this.deleteStudentError = '未提供课程或学生ID用于删除'
         return false
@@ -141,7 +207,11 @@ export const useStudentStore = defineStore('student', {
       this.deleteStudentError = null
       try {
         await studentService.deleteStudent(courseId, studentId)
-        this.students = this.students.filter((student) => student._id !== studentId)
+        if (this.allStudentsByCourse[courseId]) {
+          this.allStudentsByCourse[courseId] = this.allStudentsByCourse[courseId].filter(
+            (student) => student._id !== studentId,
+          )
+        }
         if (this.currentStudent && this.currentStudent._id === studentId) {
           this.currentStudent = null
         }

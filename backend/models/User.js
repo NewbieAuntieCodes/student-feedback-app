@@ -8,7 +8,7 @@ const userSchema = new Schema({
     required: true, // 用户名是必填的
     unique: true, // 用户名必须是唯一的
     trim: true, // 去除用户名前后的空格
-    minlength: 3, // 用户名至少需要3个字符
+    minlength: 2, // 用户名至少需要3个字符
   },
   password: {
     type: String,

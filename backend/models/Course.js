@@ -1,3 +1,4 @@
+//  backend/models/Course.js
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
@@ -15,6 +16,12 @@ const courseSchema = new Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+  },
+  status: {
+    type: String,
+    enum: ["active", "completed"], // 只允许这两个值
+    default: "active", // 默认值为 'active' (正在上课)
+    required: true, // 确保每个课程都有状态
   },
 });
 

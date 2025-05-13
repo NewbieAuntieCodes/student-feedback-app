@@ -1,3 +1,4 @@
+//backend/routes/courseRoutes.js
 const express = require("express");
 const router = express.Router();
 const courseController = require("../controllers/courseController"); // 引入课程控制器
