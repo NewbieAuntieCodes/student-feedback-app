@@ -1,3 +1,4 @@
+// backend/routes/studentRoutes.js
 const express = require("express");
 // 关键：设置 mergeParams: true 来获取父路由中的 :courseId 参数
 const router = express.Router({ mergeParams: true });

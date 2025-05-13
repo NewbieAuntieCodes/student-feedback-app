@@ -1,5 +1,7 @@
+//  backend/controllers/studentController.js
 const Student = require("../models/Student"); // 引入 Student 模型
 const Course = require("../models/Course"); // 引入 Course 模型，用于验证课程所有权
+const Feedback = require("../models/Feedback");
 const mongoose = require("mongoose"); // 引入 mongoose
 
 // @desc    将学生添加到指定课程
@@ -256,6 +258,23 @@ exports.deleteStudent = async (req, res) => {
         .status(404)
         .json({ message: "未找到该学生，或该学生不属于指定课程/用户" });
     }
+
+    // --- 【新增】步骤 4: 删除该学生的所有相关反馈记录 ---
+    // 根据 Feedback 模型，反馈记录通过 `student` 字段关联学生ID
+    // 我们也应该只删除属于这个课程的反馈，并且是由当前用户创建的反馈（如果适用）
+    // 或者，如果反馈不直接和用户关联，但和课程关联，也可以通过课程ID筛选
+    await Feedback.deleteMany({
+      student: studentId,
+      course: courseId, // 确保只删除此课程下的此学生的反馈
+      // user: req.user.id, // 可选：如果反馈也严格属于创建它的用户
+      // 如果反馈可以由不同用户（如助教）添加，则此条件可能不需要
+      // 或者如果删除学生的权限意味着可以删除所有相关反馈，则此条件也可以省略
+      // 基于您 Feedback 模型中 user 字段的含义决定
+    });
+    console.log(
+      `已删除学生 ${student.name} (ID: ${studentId}) 在课程 ${course.name} (ID: ${courseId}) 下的所有反馈记录。`
+    );
+    // --- 结束 【新增】步骤 4 ---
 
     // 4. 删除学生
     await Student.findByIdAndDelete(studentId);

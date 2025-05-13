@@ -94,14 +94,38 @@ export const useStudentStore = defineStore('student', {
       console.log('[studentStore] setCurrentStudent called with:', student)
       this.currentStudent = student
     },
+
+    // clearStudentsAndCurrent() {
+    //   this.students = [] // 或者 this.allStudentsByCourse = {} 等具体实现
+    //   this.currentStudent = null
+    //   this.isLoading = false // 重置加载状态
+    //   this.error = null
+    // },
+
     clearStudentsAndCurrent() {
-      this.students = [] // 或者 this.allStudentsByCourse = {} 等具体实现
+      // 如果你有按课程ID存储学生的对象
+      if (this.allStudentsByCourse) {
+        // 假设你的state属性叫这个
+        // 如果你希望保留空课程的键，但清空学生数组
+        // for (const courseIdKey in this.allStudentsByCourse) {
+        //     this.allStudentsByCourse[courseIdKey] = [];
+        // }
+        // 或者完全清空（如果下次需要重新构建）
+        this.allStudentsByCourse = {}
+      }
+      // 如果你有一个独立的扁平学生列表（不推荐与按课程组织的同时使用）
+      if (this.students) {
+        // 假设你的state属性叫这个
+        this.students = []
+      }
       this.currentStudent = null
-      this.isLoading = false // 重置加载状态
+      this.isLoading = false
       this.error = null
+      console.log('[studentStore] Cleared current student and relevant student lists.')
     },
+
     removeStudentsForCourse(courseId) {
-      if (this.allStudentsByCourse[courseId]) {
+      if (this.allStudentsByCourse && this.allStudentsByCourse[courseId]) {
         delete this.allStudentsByCourse[courseId]
       }
       if (this.currentStudent && this.currentStudent.course === courseId) {
@@ -201,29 +225,57 @@ export const useStudentStore = defineStore('student', {
       }
     },
     async deleteStudent(courseId, studentId) {
+      console.log(
+        '[studentStore deleteStudent] Received for service call - courseId:',
+        courseId,
+        'studentId:',
+        studentId,
+      )
       if (!courseId || !studentId) {
-        this.deleteStudentError = '未提供课程或学生ID用于删除'
+        // this.deleteStudentError = '未提供课程或学生ID用于删除'
+        this.error = '删除学生时缺少课程ID或学生ID。'
+        console.error(
+          '[studentStore deleteStudent] Missing courseId or studentId:',
+          courseId,
+          studentId,
+        ) // 【建议添加日志】
         return false
       }
-      this.isDeletingStudent = true
-      this.deleteStudentError = null
+      // this.isDeletingStudent = true
+      // this.deleteStudentError = null
+      this.isLoading = true
+      this.error = null
       try {
+        console.log(
+          `[studentStore deleteStudent] Attempting to delete student ${studentId} from course ${courseId}`,
+        ) // 【建议添加日志】
         await studentService.deleteStudent(courseId, studentId)
-        if (this.allStudentsByCourse[courseId]) {
+        // 从 allStudentsByCourse 中移除学生
+        if (this.allStudentsByCourse && this.allStudentsByCourse[courseId]) {
           this.allStudentsByCourse[courseId] = this.allStudentsByCourse[courseId].filter(
             (student) => student._id !== studentId,
           )
         }
+        // 如果删除的是当前选中的学生，则清空
         if (this.currentStudent && this.currentStudent._id === studentId) {
           this.currentStudent = null
+          // 如果清空了当前学生，可能也需要通知 courseStore 当前没有学生选中
+          // 或者 AppInfoPanel 会自动根据 studentStore.currentStudent === null 来调整显示
         }
+
+        // 如果您还有一个扁平的、全局的 students 列表 (不推荐与 allStudentsByCourse 同时使用，除非有特殊原因)
+        // this.students = this.students.filter(student => student._id !== studentId);
+
+        console.log(`Student ${studentId} from course ${courseId} deleted successfully from store.`)
         return true
       } catch (err) {
-        this.deleteStudentError = err.response?.data?.message || '删除学生失败'
-        console.error('deleteStudent error:', err)
+        // this.deleteStudentError = err.response?.data?.message || '删除学生失败'
+        this.error = err.response?.data?.message || '删除学生失败'
+        console.error('deleteStudent action error:', err)
         return false
       } finally {
-        this.isDeletingStudent = false
+        // this.isDeletingStudent = false
+        this.isLoading = false // 或者 isDeletingStudent = false
       }
     },
     clearStudentErrors() {
