@@ -2,6 +2,7 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { useFeedbackStore } from '@/store/feedbackStore'
 import { useAuthStore } from '@/store/authStore'
 import { useCourseStore } from '@/store/courseStore'
@@ -13,38 +14,76 @@ const authStore = useAuthStore()
 const courseStore = useCourseStore()
 const studentStore = useStudentStore()
 
-// 表单的引用，用于 Element Plus 表单验证和重置
 const feedbackFormRef = ref(null)
 
-// 统一管理表单的初始状态
+// 辅助函数：格式化日期用于显示 (确保它在被模板中的 v-for 调用前定义)
+const formatDisplayDate = (dateString, includeTime = false) => {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  let options = { year: 'numeric', month: '2-digit', day: '2-digit' }
+  if (includeTime) {
+    options = { ...options, hour: '2-digit', minute: '2-digit', hour12: false } // 移除秒，根据需要调整
+  }
+  // 修复 Safari/iOS 下 toLocaleDateString 可能不替换 / 的问题
+  let formattedDate = date.toLocaleDateString('zh-CN', options)
+  if (formattedDate.includes('/')) {
+    formattedDate = formattedDate.replace(/\//g, '-')
+  }
+  // 如果包含时间，确保格式是 YYYY-MM-DD HH:MM
+  if (includeTime) {
+    const parts = formattedDate.split(' ')
+    if (parts.length === 2) {
+      const datePart = parts[0]
+      const timePart = parts[1]
+      if (timePart.split(':').length === 2) {
+        // 已经是 HH:MM
+        formattedDate = `${datePart} ${timePart}`
+      } else if (timePart.split(':').length === 3) {
+        // 是 HH:MM:SS，移除秒
+        formattedDate = `${datePart} ${timePart.substring(0, timePart.lastIndexOf(':'))}`
+      }
+    } else if (parts.length === 1 && formattedDate.includes('T')) {
+      // ISO String with T
+      const [datePart, timePartFull] = formattedDate.split('T')
+      if (timePartFull) {
+        const timePart = timePartFull.substring(0, 5) // HH:MM
+        formattedDate = `${datePart.replace(/\//g, '-')} ${timePart}`
+      }
+    }
+  } else {
+    // 确保日期部分是 YYYY-MM-DD
+    if (formattedDate.includes(' ')) {
+      formattedDate = formattedDate.split(' ')[0]
+    }
+  }
+  return formattedDate
+}
+
 const getInitialFeedbackData = () => ({
-  feedbackDate: new Date(), // 默认今天
-  classTime: '', // 时间选项
-  customClassTimeStart: '', // 自定义开始时间
-  customClassTimeEnd: '', // 自定义结束时间
-  isCustomTime: false, // 标记是否使用自定义时间
-
-  lastExtrapolationAssignmentDate: null,
-  lastHomeworkStatus: '/', // 默认值 【完成情况】
-  lastHomeworkFeedback: '', // 【完成反馈】
-
+  feedbackDate: new Date(), // 默认当天日期
+  classTime: '', // <--- 修改：默认为空，不预选时间
+  customClassTimeStart: '',
+  customClassTimeEnd: '',
+  isCustomTime: false,
+  lastExtrapolationAssignmentDate: null, // 默认为空
+  lastHomeworkStatus: '/',
+  lastHomeworkFeedback: '',
   teachingContent: '',
   classPerformance: '',
   progressMade: '',
   areasForImprovement: '',
-  punctuality: '',
+  punctuality: '准时',
   extrapolationAbility: '',
+  // 新增: 用于存储可编辑的预览文本
+  editablePreviewText: '',
 })
 
-// 表单数据模型
 const feedbackData = reactive(getInitialFeedbackData())
 
-// 用于在表单顶部显示的信息
 const studentName = computed(() => studentStore.currentStudent?.name || '未知学生')
 const teacherName = computed(() => authStore.currentUser?.username || '未知教师')
 const courseName = computed(() => courseStore.currentCourse?.name || '未知课程')
 
-// 时间选项
 const timeOptions = [
   { value: '09:00 - 10:30', label: '09:00 - 10:30' },
   { value: '10:40 - 12:10', label: '10:40 - 12:10' },
@@ -54,49 +93,49 @@ const timeOptions = [
   { value: 'custom', label: '自定义' },
 ]
 
-// 监听 classTime 变化以切换自定义时间输入框的显示
 watch(
   () => feedbackData.classTime,
   (newVal) => {
     feedbackData.isCustomTime = newVal === 'custom'
     if (!feedbackData.isCustomTime) {
-      // 如果不是自定义，清空自定义时间，避免混淆
       feedbackData.customClassTimeStart = ''
       feedbackData.customClassTimeEnd = ''
     }
   },
 )
 
-// 计算属性：生成预览反馈文本
+// 用于表单提交时格式化日期
+const formatDateForSubmit = (date) => {
+  if (!date) return null
+  const d = new Date(date)
+  if (isNaN(d.getTime())) return null // 无效日期处理
+  const year = d.getFullYear()
+  const month = (d.getMonth() + 1).toString().padStart(2, '0')
+  const day = d.getDate().toString().padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+// --- 日期格式化函数结束 ---
+
+// --- generatedFeedbackText 计算属性 (核心预览逻辑) ---
 const generatedFeedbackText = computed(() => {
+  // ... (之前的实现，确保使用 feedbackData 中的值) ...
+  // 这里我们先保持原样，稍后讨论直接修改预览文本的问题
   let timeToDisplay = feedbackData.classTime
   if (timeToDisplay === 'custom') {
-    // 当 classTime 仍为 'custom' 时
     if (feedbackData.customClassTimeStart && feedbackData.customClassTimeEnd) {
       timeToDisplay = `${feedbackData.customClassTimeStart} - ${feedbackData.customClassTimeEnd}`
     } else {
       timeToDisplay = '自定义时间未完整填写'
     }
   }
-
-  // 格式化日期，如果存在的话
-  const formatDate = (date) => {
-    if (!date) return '未填写'
-    // 如果已经是 YYYY-MM-DD 格式的字符串，直接使用；如果是 Date 对象，则转换
-    if (typeof date === 'string') return date
-    return new Date(date)
-      .toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
-      .replace(/\//g, '-')
-  }
-
-  return `
+  const text = `
 【学生姓名】：${studentName.value}
-【上课日期】：${formatDate(feedbackData.feedbackDate)}
+【上课日期】：${formatDisplayDate(feedbackData.feedbackDate)}
 【上课时间】：${timeToDisplay || '未选择'}
 【授课老师】：${teacherName.value}
 【授课科目】：${courseName.value}
 
-【上次举一反三布置时间】：${formatDate(feedbackData.lastExtrapolationAssignmentDate)}
+【上次举一反三布置时间】：${formatDisplayDate(feedbackData.lastExtrapolationAssignmentDate)}
 【上次作业完成情况】：${feedbackData.lastHomeworkStatus || '/'}
 【上次作业完成反馈】：${feedbackData.lastHomeworkFeedback || '无'}
 
@@ -117,30 +156,58 @@ ${feedbackData.areasForImprovement || '无'}
 【举一反三】：
 ${feedbackData.extrapolationAbility || '无'}
   `.trim()
+  // 当表单数据变化时，如果 editablePreviewText 还没有被用户编辑过（或者我们选择在每次表单变动时都重置它），
+  // 就更新 editablePreviewText
+  if (feedbackData.editablePreviewText === '' || !userHasEditedPreview.value) {
+    // 引入一个新ref: userHasEditedPreview
+    feedbackData.editablePreviewText = text
+  }
+  return text // 这个计算属性仍然返回基于表单的文本，用于可能的比较或原始版本
 })
 
-// 复制生成的文本到剪贴板
+// 新增 ref，标记用户是否已编辑预览文本
+const userHasEditedPreview = ref(false)
+
+// 监听 editablePreviewText 的用户输入，一旦输入就标记为已编辑
+watch(
+  () => feedbackData.editablePreviewText,
+  (newValue, oldValue) => {
+    // 这个侦听器仅用于在用户首次修改预览文本时设置标记
+    // 避免在表单数据程序性更新预览文本时错误地设置此标记
+    // 因此，我们可能需要更复杂的逻辑来判断是否是“用户主动修改”
+    // 简单起见，如果新旧值不同，且旧值是程序生成的，则认为是用户修改
+    if (
+      newValue !== oldValue &&
+      oldValue === generatedFeedbackText.value &&
+      generatedFeedbackText.value !== ''
+    ) {
+      userHasEditedPreview.value = true
+    }
+    // 或者更简单粗暴的方式：只要 editablePreviewText 被改动，就认为是用户编辑了
+    // if (newValue !== generatedFeedbackText.value) { // 这会在每次表单变动也触发
+    //     userHasEditedPreview.value = true;
+    // }
+  },
+)
+
 const copyGeneratedText = async () => {
-  if (!generatedFeedbackText.value) {
+  // 现在复制的是可编辑的预览文本
+  const textToCopy = feedbackData.editablePreviewText || generatedFeedbackText.value
+  if (!textToCopy) {
     ElMessage.warning('没有可复制的反馈文本')
     return
   }
   try {
-    await navigator.clipboard.writeText(generatedFeedbackText.value)
+    await navigator.clipboard.writeText(textToCopy)
     ElMessage.success('反馈文本已复制到剪贴板！')
   } catch (err) {
-    ElMessage.error('复制失败，您的浏览器可能不支持或未授权剪贴板操作，请手动复制。')
-    console.error('Failed to copy text: ', err)
+    ElMessage.error('复制失败，请手动复制。')
   }
 }
 
-// 提交反馈
 const submitFeedback = async () => {
+  // ... (courseId, studentId 获取不变) ...
   if (!feedbackFormRef.value) return
-
-  // 如果需要表单验证，可以在这里执行
-  // await feedbackFormRef.value.validate(async (valid) => { if (valid) { ... } });
-  // 这里我们暂时跳过 Element Plus 的 validate，直接提交
 
   const courseId = route.params.courseId
   const studentId = route.params.studentId
@@ -150,83 +217,142 @@ const submitFeedback = async () => {
     return
   }
 
-  // 准备要发送的数据
-  const dataToSubmit = { ...feedbackData }
+  // 准备要发送的数据: 以 feedbackData 为基础
+  const dataToSubmit = {
+    feedbackDate: formatDateForSubmit(feedbackData.feedbackDate),
+    classTime: feedbackData.classTime, // classTime 已经在 watch 中处理或直接来自选项
+    lastExtrapolationAssignmentDate: formatDateForSubmit(
+      feedbackData.lastExtrapolationAssignmentDate,
+    ),
+    lastHomeworkStatus: feedbackData.lastHomeworkStatus,
+    lastHomeworkFeedback: feedbackData.lastHomeworkFeedback,
+    teachingContent: feedbackData.teachingContent,
+    classPerformance: feedbackData.classPerformance,
+    progressMade: feedbackData.progressMade,
+    areasForImprovement: feedbackData.areasForImprovement,
+    punctuality: feedbackData.punctuality,
+    extrapolationAbility: feedbackData.extrapolationAbility,
+    // 注意：这里不直接发送 editablePreviewText，因为后端模型没有这个字段。
+    // 如果需要将用户修改后的文本作为“主要反馈内容”，你需要决定它映射到哪个后端字段，
+    // 或者新增一个字段。
+    // 例如，如果用户修改了预览文本，且我们想用它覆盖 teachingContent：
+    // if (userHasEditedPreview.value && feedbackData.editablePreviewText !== generatedFeedbackText.value) {
+    //   dataToSubmit.teachingContent = feedbackData.editablePreviewText; // 或者一个新的字段如 'finalFeedbackText'
+    //   ElMessage.info("使用了您在预览框中修改的文本作为主要反馈内容。");
+    // }
+  }
 
-  // 如果是自定义时间，并且填写完整，则使用自定义时间拼接为 classTime
-  if (dataToSubmit.isCustomTime) {
-    if (dataToSubmit.customClassTimeStart && dataToSubmit.customClassTimeEnd) {
-      dataToSubmit.classTime = `${dataToSubmit.customClassTimeStart} - ${dataToSubmit.customClassTimeEnd}`
+  if (feedbackData.isCustomTime) {
+    if (feedbackData.customClassTimeStart && feedbackData.customClassTimeEnd) {
+      dataToSubmit.classTime = `${feedbackData.customClassTimeStart} - ${feedbackData.customClassTimeEnd}`
     } else {
-      // 如果自定义时间未完整填写，可以给用户提示或阻止提交
       ElMessage.warning('请完整填写自定义时间范围或选择预设时间')
-      // 或者将 classTime 设置为空字符串或特定标记，让后端知道
-      // dataToSubmit.classTime = ''; // 或者保持为 'custom' 由后端处理/忽略
-      // 暂时保持 isCustomTime 为 true，后端目前不处理这个辅助字段
+      return
     }
   }
-
-  // 删除前端辅助字段，这些字段不需要发送到后端
-  delete dataToSubmit.customClassTimeStart
-  delete dataToSubmit.customClassTimeEnd
-  delete dataToSubmit.isCustomTime
-
-  // 确保 feedbackDate 是 YYYY-MM-DD 格式的字符串或能被后端正确解析的格式
-  if (dataToSubmit.feedbackDate instanceof Date) {
-    // 假设后端期望 YYYY-MM-DD 字符串
-    const year = dataToSubmit.feedbackDate.getFullYear()
-    const month = (dataToSubmit.feedbackDate.getMonth() + 1).toString().padStart(2, '0')
-    const day = dataToSubmit.feedbackDate.getDate().toString().padStart(2, '0')
-    dataToSubmit.feedbackDate = `${year}-${month}-${day}`
-  }
-  if (dataToSubmit.lastExtrapolationAssignmentDate instanceof Date) {
-    const year = dataToSubmit.lastExtrapolationAssignmentDate.getFullYear()
-    const month = (dataToSubmit.lastExtrapolationAssignmentDate.getMonth() + 1)
-      .toString()
-      .padStart(2, '0')
-    const day = dataToSubmit.lastExtrapolationAssignmentDate.getDate().toString().padStart(2, '0')
-    dataToSubmit.lastExtrapolationAssignmentDate = `${year}-${month}-${day}`
-  }
+  // 不需要再 delete isCustomTime 等，因为 dataToSubmit 是按需构建的
 
   const success = await feedbackStore.addFeedback(courseId, studentId, dataToSubmit)
   if (success) {
     ElMessage.success('反馈提交成功！')
     resetForm()
-    await fetchHistory() // 提交成功后刷新历史记录
+    await fetchHistory()
   } else {
     ElMessage.error(feedbackStore.submissionError || '反馈提交失败')
   }
 }
 
-// 重置表单
 const resetForm = () => {
   Object.assign(feedbackData, getInitialFeedbackData())
-  // Element Plus 表单可能需要 nextTick 来正确清除校验状态（如果启用了校验）
+  userHasEditedPreview.value = false // 重置表单时，也重置编辑标记
+  // editablePreviewText 会在 generatedFeedbackText 下次计算时自动更新 (因为 userHasEditedPreview 为 false)
   nextTick(() => {
     if (feedbackFormRef.value) {
-      feedbackFormRef.value.clearValidate() // 清除所有字段的校验状态
+      feedbackFormRef.value.clearValidate()
     }
+    // 确保 editablePreviewText 也被重置为初始生成的文本
+    // generatedFeedbackText 会重新计算，然后上面的 watch 会触发更新 editablePreviewText
   })
 }
 
-// 获取历史反馈的函数
 const fetchHistory = async () => {
   const courseId = route.params.courseId
   const studentId = route.params.studentId
   if (courseId && studentId) {
-    feedbackStore.clearHistory() // 先清空，避免重复数据（如果 store 没有自动处理）
+    feedbackStore.clearHistory()
     await feedbackStore.fetchFeedbackForStudent(courseId, studentId)
   } else {
-    feedbackStore.clearHistory() // 如果没有学生选中，也清空历史
+    feedbackStore.clearHistory()
   }
 }
 
-// 组件挂载时获取当前学生反馈历史
+const populateFormWithHistory = (historyItem) => {
+  if (!historyItem) return
+  resetForm() // 先重置表单到初始状态
+
+  // 1. 反馈日期始终为当天 (由 getInitialFeedbackData 和 resetForm 完成)
+  // feedbackData.feedbackDate = new Date(); // 这行现在可以省略，因为 resetForm 会做
+
+  // 2. 上次举一反三布置时间 为该历史反馈的 feedbackDate
+  feedbackData.lastExtrapolationAssignmentDate = historyItem.feedbackDate
+    ? new Date(historyItem.feedbackDate)
+    : null
+
+  // 3. 复用其他字段
+  // (处理 classTime 的逻辑保持不变)
+  const predefinedTime = timeOptions.find((opt) => opt.value === historyItem.classTime)
+  if (predefinedTime && predefinedTime.value !== 'custom') {
+    feedbackData.classTime = historyItem.classTime
+    feedbackData.isCustomTime = false
+    feedbackData.customClassTimeStart = ''
+    feedbackData.customClassTimeEnd = ''
+  } else if (historyItem.classTime && historyItem.classTime.includes(' - ')) {
+    const parts = historyItem.classTime.split(' - ')
+    if (
+      parts.length === 2 &&
+      /^([01]\d|2[0-3]):([0-5]\d)$/.test(parts[0]) &&
+      /^([01]\d|2[0-3]):([0-5]\d)$/.test(parts[1])
+    ) {
+      feedbackData.classTime = 'custom'
+      feedbackData.isCustomTime = true
+      feedbackData.customClassTimeStart = parts[0]
+      feedbackData.customClassTimeEnd = parts[1]
+    } else {
+      feedbackData.classTime = '' // 清空，让用户重新选择
+      feedbackData.isCustomTime = false
+    }
+  } else {
+    feedbackData.classTime = '' // 清空，让用户重新选择
+    feedbackData.isCustomTime = false
+  }
+
+  feedbackData.lastHomeworkStatus = historyItem.lastHomeworkStatus || '/'
+  feedbackData.lastHomeworkFeedback = historyItem.lastHomeworkFeedback || ''
+  feedbackData.teachingContent = historyItem.teachingContent || ''
+  feedbackData.classPerformance = historyItem.classPerformance || ''
+  feedbackData.progressMade = historyItem.progressMade || ''
+  feedbackData.areasForImprovement = historyItem.areasForImprovement || ''
+  feedbackData.punctuality = historyItem.punctuality || '准时' // 如果历史没有，则用默认的“准时”
+  feedbackData.extrapolationAbility = historyItem.extrapolationAbility || ''
+
+  // editablePreviewText 会通过 generatedFeedbackText 的重新计算而更新
+  userHasEditedPreview.value = false // 从历史记录填充时，重置编辑标记
+
+  ElMessage.info('表单已使用历史反馈填充，日期已更新为今天，请检查并修改其他内容。')
+  nextTick(() => {
+    if (feedbackFormRef.value) {
+      feedbackFormRef.value.clearValidate()
+    }
+  })
+}
+
 onMounted(() => {
+  // `feedbackData.feedbackDate` 在 `getInitialFeedbackData` 中已设为当天
+  // `feedbackData.punctuality` 在 `getInitialFeedbackData` 中已设为 "准时"
+  // `feedbackData.classTime` 在 `getInitialFeedbackData` 中已设为 '' (空)
   fetchHistory()
 })
 
-// 监听路由参数变化，当学生或课程切换时，重新获取历史反馈
 watch(
   () => [route.params.courseId, route.params.studentId],
   ([newCourseId, newStudentId], [oldCourseId, oldStudentId]) => {
@@ -236,57 +362,72 @@ watch(
       (newCourseId !== oldCourseId || newStudentId !== oldStudentId)
     ) {
       fetchHistory()
-      resetForm() // 切换学生时重置表单
+      resetForm()
     }
   },
-  { immediate: false }, // onMounted 已经处理了首次加载
+  { immediate: false },
 )
 
-// 监听当前学生变化 (来自 studentStore)，如果切换了学生也需要更新
 watch(
   () => studentStore.currentStudent,
   (newStudent, oldStudent) => {
     if (newStudent && (!oldStudent || newStudent._id !== oldStudent._id)) {
-      // 确保路由参数也已更新或与 newStudent 一致，避免重复调用 fetchHistory
-      // 通常路由同步会先发生，然后 store 更新
       if (route.params.studentId === newStudent._id) {
         fetchHistory()
         resetForm()
       }
     } else if (!newStudent && oldStudent) {
-      // 如果当前学生被清空
       feedbackStore.clearHistory()
       resetForm()
     }
   },
 )
 
-// ------------------------------
-// 格式化日期用于显示 (可以根据需要调整输出格式)
-const formatDisplayDate = (dateString, includeTime = false) => {
-  if (!dateString) return 'N/A'
-  const date = new Date(dateString)
-  const options = { year: 'numeric', month: '2-digit', day: '2-digit' }
-  if (includeTime) {
-    options.hour = '2-digit'
-    options.minute = '2-digit'
+// --- 历史反馈删除功能 ---
+const handleDeleteFeedback = async (feedbackId) => {
+  if (!feedbackId) return
+  try {
+    await ElMessageBox.confirm('确定要删除这条反馈记录吗？此操作无法撤销。', '确认删除', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+
+    // 【【假设 feedbackStore 中有 deleteFeedback action，并且 feedbackService 中有对应方法】】
+    // const courseId = route.params.courseId;
+    // const studentId = route.params.studentId;
+    // const success = await feedbackStore.deleteFeedback(courseId, studentId, feedbackId);
+
+    // 【【临时前端模拟删除，后续需要您实现后端和store的删除逻辑】】
+    ElMessage.warning('删除功能后端接口待实现。此处仅为前端模拟。')
+    feedbackStore.feedbackHistory = feedbackStore.feedbackHistory.filter(
+      (fb) => fb._id !== feedbackId,
+    )
+    // 【【模拟结束】】
+
+    // if (success) {
+    //   ElMessage.success('反馈删除成功！');
+    //   fetchHistory(); // 重新获取列表
+    // } else {
+    //   ElMessage.error(feedbackStore.error || '删除反馈失败');
+    // }
+  } catch (e) {
+    if (e !== 'cancel') {
+      console.error('删除反馈时出错:', e)
+      ElMessage.error('删除操作取消或发生错误')
+    }
   }
-  return date.toLocaleDateString('zh-CN', options).replace(/\//g, '-')
 }
 
-// 为单个历史反馈项生成文本 (用于右侧汇总)
+// --- 历史反馈文本生成相关 ---
+// (generateSingleHistoryFeedbackText, allHistoryAsText, copyAllHistoryText, calculateTextareaRows 保持不变,
+//  但要确保 formatDisplayDate 在它们之前定义或可访问)
+
 const generateSingleHistoryFeedbackText = (historyItem) => {
   if (!historyItem) return ''
-
-  // 从 studentStore 获取当前学生姓名，从 authStore 获取当前教师（假设历史反馈的教师就是当前用户）
-  // 或者，如果 feedback 对象本身就存储了当时的教师名和学生名、课程名，则直接使用
-  // 这里我们假设历史反馈对象中已经包含了必要的信息，或者可以通过关联ID在store中查到
-  // 为简化，我们直接使用 historyItem 中的字段，对于关联信息，您可能需要进一步处理
-
-  const itemStudentName = studentStore.currentStudent?.name || '学生' // 理想情况下，历史反馈应存储当时的学生名
-  const itemTeacherName = authStore.currentUser?.username || '老师' // 理想情况下，历史反馈应存储当时的老师名
-  const itemCourseName = courseStore.currentCourse?.name || '课程' // 理想情况下，历史反馈应存储当时的课程名
-
+  const itemStudentName = studentStore.currentStudent?.name || '学生'
+  const itemTeacherName = authStore.currentUser?.username || '老师'
+  const itemCourseName = courseStore.currentCourse?.name || '课程'
   let timeToDisplay = historyItem.classTime || '未记录'
 
   return `
@@ -321,17 +462,15 @@ ${historyItem.extrapolationAbility || '无'}
   `.trim()
 }
 
-// 计算属性：将所有历史反馈转换为一个长字符串
 const allHistoryAsText = computed(() => {
   if (!feedbackStore.feedbackHistory || feedbackStore.feedbackHistory.length === 0) {
     return ''
   }
   return feedbackStore.feedbackHistory
     .map((item) => generateSingleHistoryFeedbackText(item))
-    .join('\n\n') // 每条反馈之间用两个换行符隔开
+    .join('\n\n')
 })
 
-// 复制所有历史文本
 const copyAllHistoryText = async () => {
   if (!allHistoryAsText.value) {
     ElMessage.warning('没有可复制的历史反馈文本')
@@ -346,16 +485,10 @@ const copyAllHistoryText = async () => {
   }
 }
 
-// 动态计算右侧文本域的行数，使其大致能容纳内容
 const calculateTextareaRows = (historyCount) => {
-  if (historyCount === 0) return 5 // 默认最小行数
-  return Math.max(10, Math.min(30, historyCount * 10)) // 每条记录大约10行，最小10行，最大30行
+  if (historyCount === 0) return 5
+  return Math.max(10, Math.min(30, historyCount * 10))
 }
-
-// 确保在 `onMounted` 和 `watch` 中调用 `WorkspaceHistory` 时，
-// `feedbackStore.feedbackHistory` 会被正确更新，
-// 这样 `v-if` 和 `v-for` 就能正确渲染历史反馈区域。
-// (这部分已在上一份 <script setup> 代码中包含)
 </script>
 
 <template>
@@ -519,15 +652,14 @@ const calculateTextareaRows = (historyCount) => {
           <el-card shadow="never" style="height: 100%">
             <template #header>
               <div class="card-header">
-                <span>反馈预览</span>
+                <span>反馈预览 (可编辑)</span>
               </div>
             </template>
             <el-input
               type="textarea"
-              :value="generatedFeedbackText"
+              v-model="feedbackData.editablePreviewText"
               :rows="20"
-              readonly
-              placeholder="生成的预览文本将显示在这里"
+              placeholder="生成的预览文本将显示在这里，您可以直接修改"
             />
             <div style="margin-top: 10px; text-align: right">
               <el-button @click="copyGeneratedText">复制文本</el-button>
@@ -566,32 +698,22 @@ const calculateTextareaRows = (historyCount) => {
               "
               placement="top"
             >
-              <el-card>
+              <el-card @click="populateFormWithHistory(item)" style="cursor: pointer">
+                <template #header v-if="false">
+                  {/* Element Plus Card 的 header 不太适合放按钮，我们放内容区底部 */}
+                </template>
                 <p><strong>授课内容:</strong> {{ item.teachingContent }}</p>
-                <p><strong>课堂表现:</strong> {{ item.classPerformance }}</p>
-                <p v-if="item.lastHomeworkStatus">
-                  <strong>上次作业完成情况:</strong> {{ item.lastHomeworkStatus }}
-                </p>
-                <p v-if="item.lastHomeworkFeedback">
-                  <strong>上次作业反馈:</strong> {{ item.lastHomeworkFeedback }}
-                </p>
-                <p v-if="item.progressMade"><strong>进步之处:</strong> {{ item.progressMade }}</p>
-                <p v-if="item.areasForImprovement">
-                  <strong>欠缺之处:</strong> {{ item.areasForImprovement }}
-                </p>
-                <p v-if="item.punctuality"><strong>准时度:</strong> {{ item.punctuality }}</p>
-                <p v-if="item.extrapolationAbility">
-                  <strong>举一反三布置:</strong> {{ item.extrapolationAbility }}
-                </p>
-                <p v-if="item.lastExtrapolationAssignmentDate" class="subtle-text">
-                  <small
-                    >上次举一反三布置于:
-                    {{ formatDisplayDate(item.lastExtrapolationAssignmentDate) }}</small
-                  >
-                </p>
                 <p class="subtle-text">
                   <small>记录于: {{ formatDisplayDate(item.createdAt, true) }}</small>
                 </p>
+
+                <div style="margin-top: 10px; text-align: right">
+                  <!-- {/* 新增删除按钮区域 */} -->
+                  <el-button type="danger" size="small" @click.stop="handleDeleteFeedback(item._id)"
+                    >删除</el-button
+                  >
+                  <!-- {/* @click.stop 防止触发卡片的点击事件 */} -->
+                </div>
               </el-card>
             </el-timeline-item>
           </el-timeline>

@@ -7,6 +7,10 @@ const mongoose = require("mongoose"); // 引入 mongoose
 // @route   POST /api/courses/:courseId/students/:studentId/feedback
 // @access  Private (需要用户登录)
 exports.addFeedback = async (req, res) => {
+  console.log(
+    "Received feedback data in req.body:",
+    JSON.stringify(req.body, null, 2)
+  ); // <--- 添加这行日志
   try {
     const { courseId, studentId } = req.params;
     const {
