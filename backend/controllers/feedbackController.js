@@ -12,8 +12,10 @@ exports.addFeedback = async (req, res) => {
     const {
       feedbackDate,
       classTime,
-      lastHomeworkStatus,
-      teachingContent, // 主要内容字段
+      lastHomeworkStatus, // 这是【完成情况】
+      lastHomeworkFeedback, // <-- 新增：获取【完成反馈】
+      lastExtrapolationAssignmentDate, // <-- 新增：获取上次举一反三布置时间
+      teachingContent,
       classPerformance,
       progressMade,
       areasForImprovement,
@@ -57,7 +59,9 @@ exports.addFeedback = async (req, res) => {
       user: req.user.id, // 提交反馈的老师
       feedbackDate,
       classTime,
-      lastHomeworkStatus,
+      lastHomeworkStatus, // 对应【完成情况】
+      lastHomeworkFeedback, // <-- 新增
+      lastExtrapolationAssignmentDate, // <-- 新增
       teachingContent,
       classPerformance,
       progressMade,

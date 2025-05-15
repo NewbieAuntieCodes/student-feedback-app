@@ -37,6 +37,18 @@ const feedbackSchema = new Schema({
     trim: true,
     default: "",
   },
+  // 新增字段：上次作业完成反馈
+  lastHomeworkFeedback: {
+    // 对应【完成反馈】
+    type: String,
+    trim: true,
+    default: "",
+  },
+  // 新增字段：上次举一反三布置时间
+  lastExtrapolationAssignmentDate: {
+    type: Date,
+    default: null, // 允许为空
+  },
   teachingContent: {
     // 截图中的“授课内容” - 现在是主要内容字段
     type: String,
