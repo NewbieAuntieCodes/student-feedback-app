@@ -1,4 +1,3 @@
-//src/layouts/AppSidebar.vue
 <template>
   <el-aside width="280px" class="app-sidebar">
     <div class="sidebar-actions">
