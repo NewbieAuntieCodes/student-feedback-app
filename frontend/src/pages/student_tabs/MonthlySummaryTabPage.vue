@@ -348,7 +348,7 @@ watch(
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px">
+    <el-row :gutter="20" style="margin-top: 20px" class="main-content-row">
       <el-col :xs="24" :sm="16">
         <el-card shadow="hover" class="summary-display-card">
           <template #header>
@@ -472,39 +472,76 @@ watch(
       </el-col>
 
       <el-col :xs="24" :sm="8">
-        <el-card shadow="hover" class="history-card">
+        <el-card shadow="hover" class="summary-preview-card">
           <template #header>
             <div class="card-header">
-              <span>历史月度总结</span>
+              <span>月度总结预览 (可编辑)</span>
             </div>
           </template>
-          <div v-if="isLoadingHistory" class="loading-placeholder">
-            <el-skeleton :rows="5" animated />
+          <el-input
+            type="textarea"
+            :rows="20"
+            placeholder="根据左侧表单内容生成预览，您可以直接编辑。"
+            v-model="generatedSummaryPreviewText"
+            :disabled="!currentStudent || !summaryEditForm.summaryDate"
+            class="preview-textarea"
+          />
+          <div style="margin-top: 15px; text-align: center">
+            <el-button type="primary" @click="generateAndShowSummaryPreview"
+              >生成/刷新预览</el-button
+            >
+            <el-button
+              type="success"
+              @click="handleSaveSummary"
+              :loading="isUpdatingSummary"
+              :disabled="!summaryEditForm._id && !activeSummary"
+              title="保存对左侧表单内容的修改"
+            >
+              保存总结
+            </el-button>
+            <el-button @click="handleCopySummaryPreview" :disabled="!generatedSummaryPreviewText">
+              复制预览文本
+            </el-button>
           </div>
-          <div v-else-if="summaryHistory.length > 0">
-            <el-timeline>
-              <el-timeline-item
-                v-for="item in summaryHistory"
-                :key="item._id"
-                :timestamp="dayjs(item.summaryDate, 'YYYY-MM').format('YYYY年MM月')"
-                placement="top"
-                type="primary"
-                hollow
-              >
-                <el-button link type="primary" @click="loadSummaryFromHistory(item)">
-                  {{ dayjs(item.summaryDate, 'YYYY-MM').format('YYYY年MM月') }} -
-                  {{ item.subjectName }}
-                </el-button>
-                <small style="display: block; color: #909399; font-size: 0.8em">
-                  (更新于: {{ dayjs(item.updatedAt).format('MM-DD HH:mm') }})
-                </small>
-              </el-timeline-item>
-            </el-timeline>
-          </div>
-          <el-empty v-else-if="!currentStudent" description="请选择学生查看历史。"></el-empty>
-          <el-empty v-else description="暂无历史月度总结。"></el-empty>
         </el-card>
       </el-col>
+
+      <el-row :gutter="20" class="history-row">
+        <el-col>
+          <el-card shadow="hover" class="history-card-fullwidth">
+            <template #header>
+              <div class="card-header">
+                <span>历史月度总结</span>
+              </div>
+            </template>
+            <div v-if="isLoadingHistory" class="loading-placeholder">
+              <el-skeleton :rows="5" animated />
+            </div>
+            <div v-else-if="summaryHistory.length > 0">
+              <el-timeline>
+                <el-timeline-item
+                  v-for="item in summaryHistory"
+                  :key="item._id"
+                  :timestamp="dayjs(item.summaryDate, 'YYYY-MM').format('YYYY年MM月')"
+                  placement="top"
+                  type="primary"
+                  hollow
+                >
+                  <el-button link type="primary" @click="loadSummaryFromHistory(item)">
+                    {{ dayjs(item.summaryDate, 'YYYY-MM').format('YYYY年MM月') }} -
+                    {{ item.subjectName }}
+                  </el-button>
+                  <small style="display: block; color: #909399; font-size: 0.8em">
+                    (更新于: {{ dayjs(item.updatedAt).format('MM-DD HH:mm') }})
+                  </small>
+                </el-timeline-item>
+              </el-timeline>
+            </div>
+            <el-empty v-else-if="!currentStudent" description="请选择学生查看历史。"></el-empty>
+            <el-empty v-else description="暂无历史月度总结。"></el-empty>
+          </el-card>
+        </el-col>
+      </el-row>
     </el-row>
   </div>
 </template>
@@ -516,9 +553,15 @@ watch(
   display: flex;
   flex-direction: column;
 }
-.controls-row {
+.controls-row,
+.main-content-row, /* 新增的类，用于左右布局的行 */
+.history-row {
+  /* 新增的类，用于历史记录的行 */
   margin-bottom: 20px;
   flex-shrink: 0;
+}
+.monthly-summary-tab-page .el-row:last-child {
+  margin-bottom: 0;
 }
 .card-header {
   display: flex;
@@ -526,16 +569,38 @@ watch(
   align-items: center;
   font-weight: bold;
 }
-.summary-display-card,
-.history-card {
-  height: calc(100vh - 200px); /* 估算高度，可根据实际布局调整 */
+/* 左侧编辑区卡片 */
+.summary-display-card {
+  height: calc(100vh - 280px); /* 估算高度，需要调整 */
   overflow-y: auto;
 }
+
+/* 右侧预览区卡片 */
+.summary-preview-card {
+  height: calc(100vh - 280px); /* 与左侧编辑区等高 */
+  display: flex;
+  flex-direction: column;
+}
+.preview-textarea {
+  flex-grow: 1; /* 让文本域填充剩余空间 */
+}
+.preview-textarea :deep(textarea) {
+  height: 100% !important; /* 确保textarea本身也填满 */
+  resize: none; /* 禁止用户调整大小 */
+}
+
+/* 底部历史记录卡片 */
+.history-card-fullwidth {
+  /* height: auto; /* 高度自适应内容 */
+  max-height: 45vh; /* 可以给历史记录一个最大高度 */
+  overflow-y: auto;
+}
+
 .loading-placeholder {
   padding: 20px;
 }
 .el-form-item {
-  margin-bottom: 18px;
+  margin-bottom: 15px; /* 稍微减小表单项间距 */
 }
 .el-timeline {
   padding-left: 5px;
