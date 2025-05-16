@@ -1,6 +1,6 @@
 //src/layouts/AppSidebar.vue
 <template>
-  <el-aside width="280px" class="app-sidebar">
+  <el-aside width="50x" class="app-sidebar">
     <div class="sidebar-actions">
       <el-button
         type="primary"
@@ -553,7 +553,6 @@ onMounted(async () => {
 
 <style scoped>
 .app-sidebar {
-  border-right: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
   height: 100vh;

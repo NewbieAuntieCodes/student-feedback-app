@@ -1,53 +1,6 @@
-<!-- <template>
-  <el-aside width="280px" class="right-sidebar-container" v-if="showPanel">
-    <el-scrollbar style="flex-grow: 1; padding: 15px">
-      <h3>信息栏</h3>
-      <div v-if="courseStore.currentCourse">
-        <h4>当前课程: {{ courseStore.currentCourse.name }}</h4>
-        <p>ID: {{ courseStore.currentCourse._id }}</p>
-        <el-button
-          size="small"
-          @click="emit('edit-course', courseStore.currentCourse)"
-          type="primary"
-          plain
-          :icon="EditPen"
-          style="margin-top: 5px"
-          >编辑课程</el-button
-        >
-        <el-button
-          size="small"
-          @click="emit('delete-course', courseStore.currentCourse)"
-          type="danger"
-          plain
-          :icon="Delete"
-          style="margin-top: 5px"
-          >删除课程</el-button
-        >
-      </div>
-      <el-divider v-if="courseStore.currentCourse && studentStore.currentStudent" />
-      <div v-if="studentStore.currentStudent">
-        <h4>当前学生: {{ studentStore.currentStudent.name }}</h4>
-        <p>ID: {{ studentStore.currentStudent._id }}</p>
-        <p>年级: {{ studentStore.currentStudent.grade || 'N/A' }}</p>
-        <el-button
-          size="small"
-          type="danger"
-          plain
-          :icon="DeleteIcon"
-          @click="triggerDeleteStudent"
-          style="margin-top: 10px"
-          >删除学生</el-button
-        >
-      </div>
-      <div v-if="!courseStore.currentCourse && !studentStore.currentStudent">
-        <p>选择一个课程或学生以查看更多信息。</p>
-      </div>
-    </el-scrollbar>
-  </el-aside>
-</template> -->
-
+// AppInfoPanel.vue
 <template>
-  <el-aside width="280px" class="right-sidebar-container" v-if="showPanel">
+  <el-aside width="240x" class="right-sidebar-container" v-if="showPanel">
     <el-scrollbar style="flex-grow: 1; padding: 15px">
       <h3>信息栏</h3>
 

@@ -17,6 +17,9 @@ import { useRouteCourseSync } from '@/composables/useRouteCourseSync.js'
 
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+import { Splitpanes, Pane } from 'splitpanes'
+import 'splitpanes/dist/splitpanes.css' // 引入CSS
+
 console.log('[AppLayout] Setup script started.')
 
 const router = useRouter()
@@ -171,62 +174,47 @@ console.log('[AppLayout] Setup script finished.')
 </script>
 
 <template>
-  <el-container style="height: 100vh; background-color: #f0f2f5">
-    <AppSidebar
-      v-if="storesInitialized"
-      @course-selected-sidebar="handleCourseSelected"
-      @open-create-course-dialog="openCreateCourseModal"
-      @open-add-student-dialog="openAddStudentModal"
-    />
-    <div v-else-if="!initializationError" class="loading-stores">Initializing core services...</div>
-    <div v-else class="loading-stores error-stores">
+  <div style="height: 100vh; display: flex; flex-direction: column">
+    <div v-if="!storesInitialized && !initializationError" class="loading-stores">
+      Initializing core services...
+    </div>
+    <div v-else-if="initializationError" class="loading-stores error-stores">
       Core services failed to initialize. Please refresh. <br />
       Auth: {{ authStoreStatus }} | Course: {{ courseStoreStatus }} | Student:
       {{ studentStoreStatus }}
     </div>
 
-    <AppMainContent v-if="storesInitialized" />
-
-    <AppInfoPanel
-      v-if="storesInitialized && showRightInfoPanel"
-      @edit-course="openEditCourseModal"
-      @delete-course="handleDeleteCourse"
-    />
-
-    <!-- <div
-      v-if="storesInitialized"
-      style="
-        position: fixed;
-        top: 10px;
-        left: 10px;
-        background: lightyellow;
-        z-index: 9999;
-        padding: 5px;
-        border: 1px solid orange;
-      "
+    <splitpanes
+      v-else
+      class="default-theme app-layout-splitpanes"
+      style="flex-grow: 1; height: 100%"
     >
-      DEBUG AppLayout: <br />
-      courseModalVisibility: <br />
-      - isRef: {{ !!(courseModalVisibility && courseModalVisibility.__v_isRef) }} <br />
-      - typeof: {{ typeof courseModalVisibility }} <br />
-      - .value:
-      {{
-        courseModalVisibility && courseModalVisibility.__v_isRef
-          ? courseModalVisibility.value
-          : 'N/A or not a ref'
-      }}
-      <br />
-      <hr />
-      studentModalVisibility: <br />
-      - isRef: {{ !!(studentModalVisibility && studentModalVisibility.__v_isRef) }} <br />
-      - typeof: {{ typeof studentModalVisibility }} <br />
-      - .value:
-      {{
-        studentModalVisibility && studentModalVisibility.__v_isRef
-          ? studentModalVisibility.value
-          : 'N/A or not a ref'
-      }}
-    </div> -->
+      <pane size="20" min-size="15" class="sidebar-pane">
+        <AppSidebar
+          @course-selected-sidebar="handleCourseSelected"
+          @open-create-course-dialog="openCreateCourseModal"
+          @open-add-student-dialog="openAddStudentModal"
+          style="height: 100%; overflow-y: auto; background-color: #fff"
+        />
+      </pane>
+
+      <pane class="main-content-pane">
+        <AppMainContent style="height: 100%; overflow-y: auto; background-color: #f0f2f5" />
+      </pane>
+
+      <pane v-if="showRightInfoPanel" class="info-panel-pane" size="25" min-size="15">
+        <AppInfoPanel
+          @edit-course="openEditCourseModal"
+          @delete-course="handleDeleteCourse"
+          style="
+            height: 100%;
+            overflow-y: auto;
+            background-color: #fff;
+            border-left: 1px solid #e0e0e0;
+          "
+        />
+      </pane>
+    </splitpanes>
 
     <CreateCourseModal
       v-if="storesInitialized"
@@ -248,7 +236,7 @@ console.log('[AppLayout] Setup script finished.')
       @student-added="handleStudentAdded"
       @closed="onStudentModalActuallyClosed"
     />
-  </el-container>
+  </div>
 </template>
 
 <style scoped>
@@ -262,5 +250,38 @@ console.log('[AppLayout] Setup script finished.')
 .error-stores {
   color: #f56c6c;
   white-space: pre-wrap;
+}
+
+/* 确保 splitpanes 的 pane 没有不必要的内边距，除非你的组件需要 */
+.app-layout-splitpanes :deep(.splitpanes__pane) {
+  padding: 0 !important; /* 强制移除 pane 的内边距 */
+  display: flex; /* 帮助内部组件正确填充 */
+  flex-direction: column; /* 帮助内部组件正确填充 */
+}
+
+/* (可选) 为每个 Pane 的直接子组件（即你的 AppSidebar, AppMainContent, AppInfoPanel） */
+/* 设置样式，确保它们能正确填充 Pane 并处理溢出。*/
+/* 这通常在组件自身的根元素上设置 style="height: 100%; width: 100%; overflow: auto;" */
+/* 但如果Pane内部直接是这些组件，上面的 :deep(.splitpanes__pane) 样式可能已足够 */
+
+.sidebar-pane {
+  /* background-color: #fff; /* 已通过内联style设置 */
+}
+.main-content-pane {
+  /* background-color: #f0f2f5; /* 已通过内联style设置 */
+}
+.info-panel-pane {
+  /* background-color: #fff; /* 已通过内联style设置 */
+}
+
+/* 自定义分割条样式 */
+.app-layout-splitpanes :deep(.splitpanes__splitter) {
+  background-color: #e0e0e0; /* 分割条颜色 */
+  width: 3px; /* 分割条宽度 */
+  border: none; /* 通常不需要边框，背景色即可 */
+  box-sizing: border-box;
+}
+.app-layout-splitpanes :deep(.splitpanes__splitter:hover) {
+  background-color: #cccccc; /* 鼠标悬浮时分割条颜色 */
 }
 </style>
