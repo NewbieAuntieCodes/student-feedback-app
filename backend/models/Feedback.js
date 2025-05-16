@@ -23,43 +23,41 @@ const feedbackSchema = new Schema({
     // 截图中的“日期”
     type: Date,
     required: [true, "反馈日期不能为空"],
-    default: Date.now,
   },
   classTime: {
     // 截图中的“时间”
     type: String,
     trim: true,
   },
-  // interviewOral 字段已移除
   lastHomeworkStatus: {
     // 截图中的“上次作业/完成情况”
     type: String,
     trim: true,
     default: "",
   },
-  // 新增字段：上次作业完成反馈
   lastHomeworkFeedback: {
     // 对应【完成反馈】
     type: String,
     trim: true,
     default: "",
   },
-  // 新增字段：上次举一反三布置时间
   lastExtrapolationAssignmentDate: {
     type: Date,
-    default: null, // 允许为空
+    default: null,
   },
   teachingContent: {
-    // 截图中的“授课内容” - 现在是主要内容字段
+    // 截图中的“授课内容” - 这个字段现在可能被下面的 generatedFeedbackText 部分取代，或者作为结构化备份
     type: String,
-    required: [true, "授课内容不能为空"],
+    // required: [true, "授课内容不能为空"], // 如果 generatedFeedbackText 是主要的，这个可以不是必填
     trim: true,
+    default: "",
   },
   classPerformance: {
     // 截图中的“本次课堂表现”
     type: String,
-    required: [true, "本次课堂表现不能为空"],
+    // required: [true, "本次课堂表现不能为空"], // 同上
     trim: true,
+    default: "",
   },
   progressMade: {
     // 截图中的“进步之处”
@@ -84,6 +82,12 @@ const feedbackSchema = new Schema({
     type: String,
     trim: true,
     default: "",
+  },
+  // 新增字段，用于存储生成或编辑后的完整反馈文本
+  generatedFeedbackText: {
+    type: String,
+    trim: true,
+    required: [true, "反馈预览内容不能为空"], // 设为必填，如果这是主要提交内容
   },
   createdAt: {
     // 反馈记录的创建时间

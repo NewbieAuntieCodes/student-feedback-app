@@ -1,794 +1,561 @@
 <script setup>
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { ElMessageBox } from 'element-plus'
 import { useFeedbackStore } from '@/store/feedbackStore'
-import { useAuthStore } from '@/store/authStore'
-import { useCourseStore } from '@/store/courseStore'
 import { useStudentStore } from '@/store/studentStore'
+import { useCourseStore } from '@/store/courseStore'
+import { useAuthStore } from '@/store/authStore' // <--- 导入 authStore
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useForm } from '@/composables/useForm'
+import dayjs from 'dayjs'
 
 const route = useRoute()
 const feedbackStore = useFeedbackStore()
-const authStore = useAuthStore()
-const courseStore = useCourseStore()
 const studentStore = useStudentStore()
+const courseStore = useCourseStore()
+const authStore = useAuthStore() // <--- 实例化 authStore
 
-const feedbackFormRef = ref(null)
+// 计算属性现在应该能正常工作
+const currentUser = computed(() => authStore.currentUser)
+const currentCourse = computed(() => courseStore.currentCourse)
+const currentStudent = computed(() => studentStore.selectedStudent) // 确保这是唯一的 currentStudent 声明
 
-// 辅助函数：格式化日期用于显示 (确保它在被模板中的 v-for 调用前定义)
-const formatDisplayDate = (dateString, includeTime = false) => {
-  if (!dateString) return 'N/A'
-  const date = new Date(dateString)
-  let options = { year: 'numeric', month: '2-digit', day: '2-digit' }
-  if (includeTime) {
-    options = { ...options, hour: '2-digit', minute: '2-digit', hour12: false } // 移除秒，根据需要调整
-  }
-  // 修复 Safari/iOS 下 toLocaleDateString 可能不替换 / 的问题
-  let formattedDate = date.toLocaleDateString('zh-CN', options)
-  if (formattedDate.includes('/')) {
-    formattedDate = formattedDate.replace(/\//g, '-')
-  }
-  // 如果包含时间，确保格式是 YYYY-MM-DD HH:MM
-  if (includeTime) {
-    const parts = formattedDate.split(' ')
-    if (parts.length === 2) {
-      const datePart = parts[0]
-      const timePart = parts[1]
-      if (timePart.split(':').length === 2) {
-        // 已经是 HH:MM
-        formattedDate = `${datePart} ${timePart}`
-      } else if (timePart.split(':').length === 3) {
-        // 是 HH:MM:SS，移除秒
-        formattedDate = `${datePart} ${timePart.substring(0, timePart.lastIndexOf(':'))}`
-      }
-    } else if (parts.length === 1 && formattedDate.includes('T')) {
-      // ISO String with T
-      const [datePart, timePartFull] = formattedDate.split('T')
-      if (timePartFull) {
-        const timePart = timePartFull.substring(0, 5) // HH:MM
-        formattedDate = `${datePart.replace(/\//g, '-')} ${timePart}`
-      }
-    }
-  } else {
-    // 确保日期部分是 YYYY-MM-DD
-    if (formattedDate.includes(' ')) {
-      formattedDate = formattedDate.split(' ')[0]
-    }
-  }
-  return formattedDate
-}
+const feedbackHistory = computed(() => feedbackStore.feedbackHistory)
+const isLoadingHistory = computed(() => feedbackStore.isLoadingHistory)
 
-const getInitialFeedbackData = () => ({
-  feedbackDate: new Date(), // 默认当天日期
-  classTime: '', // <--- 修改：默认为空，不预选时间
-  customClassTimeStart: '',
-  customClassTimeEnd: '',
-  isCustomTime: false,
-  lastExtrapolationAssignmentDate: null, // 默认为空
-  lastHomeworkStatus: '/',
+// --- 表单逻辑 ---
+const getInitialFeedbackFormState = () => ({
+  feedbackDate: dayjs().format('YYYY-MM-DD'),
+  classTime: '',
+  lastHomeworkStatus: '',
   lastHomeworkFeedback: '',
+  lastExtrapolationAssignmentDate: null,
   teachingContent: '',
   classPerformance: '',
   progressMade: '',
   areasForImprovement: '',
-  punctuality: '准时',
+  punctuality: '',
   extrapolationAbility: '',
-  // 新增: 用于存储可编辑的预览文本
-  editablePreviewText: '',
 })
 
-const feedbackData = reactive(getInitialFeedbackData())
-
-const studentName = computed(() => studentStore.currentStudent?.name || '未知学生')
-const teacherName = computed(() => authStore.currentUser?.username || '未知教师')
-const courseName = computed(() => courseStore.currentCourse?.name || '未知课程')
-
-const timeOptions = [
-  { value: '09:00 - 10:30', label: '09:00 - 10:30' },
-  { value: '10:40 - 12:10', label: '10:40 - 12:10' },
-  { value: '13:30 - 15:00', label: '13:30 - 15:00' },
-  { value: '15:15 - 16:45', label: '15:15 - 16:45' },
-  { value: '17:00 - 18:30', label: '17:00 - 18:30' },
-  { value: 'custom', label: '自定义' },
-]
-
-watch(
-  () => feedbackData.classTime,
-  (newVal) => {
-    feedbackData.isCustomTime = newVal === 'custom'
-    if (!feedbackData.isCustomTime) {
-      feedbackData.customClassTimeStart = ''
-      feedbackData.customClassTimeEnd = ''
-    }
-  },
-)
-
-// 用于表单提交时格式化日期
-const formatDateForSubmit = (date) => {
-  if (!date) return null
-  const d = new Date(date)
-  if (isNaN(d.getTime())) return null // 无效日期处理
-  const year = d.getFullYear()
-  const month = (d.getMonth() + 1).toString().padStart(2, '0')
-  const day = d.getDate().toString().padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-// --- 日期格式化函数结束 ---
-
-// --- generatedFeedbackText 计算属性 (核心预览逻辑) ---
-const generatedFeedbackText = computed(() => {
-  // ... (之前的实现，确保使用 feedbackData 中的值) ...
-  // 这里我们先保持原样，稍后讨论直接修改预览文本的问题
-  let timeToDisplay = feedbackData.classTime
-  if (timeToDisplay === 'custom') {
-    if (feedbackData.customClassTimeStart && feedbackData.customClassTimeEnd) {
-      timeToDisplay = `${feedbackData.customClassTimeStart} - ${feedbackData.customClassTimeEnd}`
-    } else {
-      timeToDisplay = '自定义时间未完整填写'
-    }
-  }
-  const text = `
-【学生姓名】：${studentName.value}
-【上课日期】：${formatDisplayDate(feedbackData.feedbackDate)}
-【上课时间】：${timeToDisplay || '未选择'}
-【授课老师】：${teacherName.value}
-【授课科目】：${courseName.value}
-
-【上次举一反三布置时间】：${formatDisplayDate(feedbackData.lastExtrapolationAssignmentDate)}
-【上次作业完成情况】：${feedbackData.lastHomeworkStatus || '/'}
-【上次作业完成反馈】：${feedbackData.lastHomeworkFeedback || '无'}
-
-【本次授课内容】：
-${feedbackData.teachingContent || '无'}
-
-【本次课堂表现】：
-${feedbackData.classPerformance || '无'}
-
-【进步之处】：
-${feedbackData.progressMade || '无'}
-
-【欠缺之处】：
-${feedbackData.areasForImprovement || '无'}
-
-【准时度】：${feedbackData.punctuality || '未记录'}
-
-【举一反三】：
-${feedbackData.extrapolationAbility || '无'}
-  `.trim()
-  // 当表单数据变化时，如果 editablePreviewText 还没有被用户编辑过（或者我们选择在每次表单变动时都重置它），
-  // 就更新 editablePreviewText
-  if (feedbackData.editablePreviewText === '' || !userHasEditedPreview.value) {
-    // 引入一个新ref: userHasEditedPreview
-    feedbackData.editablePreviewText = text
-  }
-  return text // 这个计算属性仍然返回基于表单的文本，用于可能的比较或原始版本
-})
-
-// 新增 ref，标记用户是否已编辑预览文本
-const userHasEditedPreview = ref(false)
-
-// 监听 editablePreviewText 的用户输入，一旦输入就标记为已编辑
-watch(
-  () => feedbackData.editablePreviewText,
-  (newValue, oldValue) => {
-    // 这个侦听器仅用于在用户首次修改预览文本时设置标记
-    // 避免在表单数据程序性更新预览文本时错误地设置此标记
-    // 因此，我们可能需要更复杂的逻辑来判断是否是“用户主动修改”
-    // 简单起见，如果新旧值不同，且旧值是程序生成的，则认为是用户修改
-    if (
-      newValue !== oldValue &&
-      oldValue === generatedFeedbackText.value &&
-      generatedFeedbackText.value !== ''
-    ) {
-      userHasEditedPreview.value = true
-    }
-    // 或者更简单粗暴的方式：只要 editablePreviewText 被改动，就认为是用户编辑了
-    // if (newValue !== generatedFeedbackText.value) { // 这会在每次表单变动也触发
-    //     userHasEditedPreview.value = true;
-    // }
-  },
-)
-
-const copyGeneratedText = async () => {
-  // 现在复制的是可编辑的预览文本
-  const textToCopy = feedbackData.editablePreviewText || generatedFeedbackText.value
-  if (!textToCopy) {
-    ElMessage.warning('没有可复制的反馈文本')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(textToCopy)
-    ElMessage.success('反馈文本已复制到剪贴板！')
-  } catch (err) {
-    ElMessage.error('复制失败，请手动复制。')
-  }
-}
-
-const submitFeedback = async () => {
-  // ... (courseId, studentId 获取不变) ...
-  if (!feedbackFormRef.value) return
-
+const submitFeedbackAction = async (formData) => {
   const courseId = route.params.courseId
   const studentId = route.params.studentId
-
   if (!courseId || !studentId) {
-    ElMessage.error('课程或学生信息丢失，无法提交反馈')
-    return
+    ElMessage.error('课程或学生信息丢失')
+    return Promise.reject(new Error('课程或学生信息丢失'))
   }
 
-  // 准备要发送的数据: 以 feedbackData 为基础
   const dataToSubmit = {
-    feedbackDate: formatDateForSubmit(feedbackData.feedbackDate),
-    classTime: feedbackData.classTime, // classTime 已经在 watch 中处理或直接来自选项
-    lastExtrapolationAssignmentDate: formatDateForSubmit(
-      feedbackData.lastExtrapolationAssignmentDate,
-    ),
-    lastHomeworkStatus: feedbackData.lastHomeworkStatus,
-    lastHomeworkFeedback: feedbackData.lastHomeworkFeedback,
-    teachingContent: feedbackData.teachingContent,
-    classPerformance: feedbackData.classPerformance,
-    progressMade: feedbackData.progressMade,
-    areasForImprovement: feedbackData.areasForImprovement,
-    punctuality: feedbackData.punctuality,
-    extrapolationAbility: feedbackData.extrapolationAbility,
-    // 注意：这里不直接发送 editablePreviewText，因为后端模型没有这个字段。
-    // 如果需要将用户修改后的文本作为“主要反馈内容”，你需要决定它映射到哪个后端字段，
-    // 或者新增一个字段。
-    // 例如，如果用户修改了预览文本，且我们想用它覆盖 teachingContent：
-    // if (userHasEditedPreview.value && feedbackData.editablePreviewText !== generatedFeedbackText.value) {
-    //   dataToSubmit.teachingContent = feedbackData.editablePreviewText; // 或者一个新的字段如 'finalFeedbackText'
-    //   ElMessage.info("使用了您在预览框中修改的文本作为主要反馈内容。");
-    // }
+    feedbackDate: formData.feedbackDate ? dayjs(formData.feedbackDate).toISOString() : null,
+    classTime: formData.classTime,
+    lastHomeworkStatus: formData.lastHomeworkStatus,
+    lastHomeworkFeedback: formData.lastHomeworkFeedback,
+    lastExtrapolationAssignmentDate: formData.lastExtrapolationAssignmentDate
+      ? dayjs(formData.lastExtrapolationAssignmentDate).toISOString()
+      : null,
+    // teachingContent: formData.teachingContent, // 在新版需求中，这里应该提交预览文本
+    // classPerformance: formData.classPerformance, // 同上
+    // ... 其他结构化字段如果后端仍需要 ...
+    generatedFeedbackText: feedbackPreviewText.value, // 确保提交的是这个
+    // 如果后端仍然需要这些结构化字段，可以取消注释并确保后端 Feedback模型有对应字段
+    teachingContent: formData.teachingContent,
+    classPerformance: formData.classPerformance,
+    progressMade: formData.progressMade,
+    areasForImprovement: formData.areasForImprovement,
+    punctuality: formData.punctuality,
+    extrapolationAbility: formData.extrapolationAbility,
   }
-
-  if (feedbackData.isCustomTime) {
-    if (feedbackData.customClassTimeStart && feedbackData.customClassTimeEnd) {
-      dataToSubmit.classTime = `${feedbackData.customClassTimeStart} - ${feedbackData.customClassTimeEnd}`
-    } else {
-      ElMessage.warning('请完整填写自定义时间范围或选择预设时间')
-      return
-    }
-  }
-  // 不需要再 delete isCustomTime 等，因为 dataToSubmit 是按需构建的
 
   const success = await feedbackStore.addFeedback(courseId, studentId, dataToSubmit)
-  if (success) {
-    ElMessage.success('反馈提交成功！')
-    resetForm()
-    await fetchHistory()
-  } else {
-    ElMessage.error(feedbackStore.submissionError || '反馈提交失败')
-  }
-}
-
-const resetForm = () => {
-  Object.assign(feedbackData, getInitialFeedbackData())
-  userHasEditedPreview.value = false // 重置表单时，也重置编辑标记
-  // editablePreviewText 会在 generatedFeedbackText 下次计算时自动更新 (因为 userHasEditedPreview 为 false)
-  nextTick(() => {
-    if (feedbackFormRef.value) {
-      feedbackFormRef.value.clearValidate()
-    }
-    // 确保 editablePreviewText 也被重置为初始生成的文本
-    // generatedFeedbackText 会重新计算，然后上面的 watch 会触发更新 editablePreviewText
-  })
-}
-
-const fetchHistory = async () => {
-  const courseId = route.params.courseId
-  const studentId = route.params.studentId
-  if (courseId && studentId) {
-    feedbackStore.clearHistory()
-    await feedbackStore.fetchFeedbackForStudent(courseId, studentId)
-  } else {
-    feedbackStore.clearHistory()
-  }
-}
-
-const populateFormWithHistory = (historyItem) => {
-  if (!historyItem) return
-  resetForm() // 先重置表单到初始状态
-
-  // 1. 反馈日期始终为当天 (由 getInitialFeedbackData 和 resetForm 完成)
-  // feedbackData.feedbackDate = new Date(); // 这行现在可以省略，因为 resetForm 会做
-
-  // 2. 上次举一反三布置时间 为该历史反馈的 feedbackDate
-  feedbackData.lastExtrapolationAssignmentDate = historyItem.feedbackDate
-    ? new Date(historyItem.feedbackDate)
-    : null
-
-  // 3. 复用其他字段
-  // (处理 classTime 的逻辑保持不变)
-  const predefinedTime = timeOptions.find((opt) => opt.value === historyItem.classTime)
-  if (predefinedTime && predefinedTime.value !== 'custom') {
-    feedbackData.classTime = historyItem.classTime
-    feedbackData.isCustomTime = false
-    feedbackData.customClassTimeStart = ''
-    feedbackData.customClassTimeEnd = ''
-  } else if (historyItem.classTime && historyItem.classTime.includes(' - ')) {
-    const parts = historyItem.classTime.split(' - ')
-    if (
-      parts.length === 2 &&
-      /^([01]\d|2[0-3]):([0-5]\d)$/.test(parts[0]) &&
-      /^([01]\d|2[0-3]):([0-5]\d)$/.test(parts[1])
-    ) {
-      feedbackData.classTime = 'custom'
-      feedbackData.isCustomTime = true
-      feedbackData.customClassTimeStart = parts[0]
-      feedbackData.customClassTimeEnd = parts[1]
-    } else {
-      feedbackData.classTime = '' // 清空，让用户重新选择
-      feedbackData.isCustomTime = false
-    }
-  } else {
-    feedbackData.classTime = '' // 清空，让用户重新选择
-    feedbackData.isCustomTime = false
-  }
-
-  feedbackData.lastHomeworkStatus = historyItem.lastHomeworkStatus || '/'
-  feedbackData.lastHomeworkFeedback = historyItem.lastHomeworkFeedback || ''
-  feedbackData.teachingContent = historyItem.teachingContent || ''
-  feedbackData.classPerformance = historyItem.classPerformance || ''
-  feedbackData.progressMade = historyItem.progressMade || ''
-  feedbackData.areasForImprovement = historyItem.areasForImprovement || ''
-  feedbackData.punctuality = historyItem.punctuality || '准时' // 如果历史没有，则用默认的“准时”
-  feedbackData.extrapolationAbility = historyItem.extrapolationAbility || ''
-
-  // editablePreviewText 会通过 generatedFeedbackText 的重新计算而更新
-  userHasEditedPreview.value = false // 从历史记录填充时，重置编辑标记
-
-  ElMessage.info('表单已使用历史反馈填充，日期已更新为今天，请检查并修改其他内容。')
-  nextTick(() => {
-    if (feedbackFormRef.value) {
-      feedbackFormRef.value.clearValidate()
-    }
-  })
-}
-
-onMounted(() => {
-  // `feedbackData.feedbackDate` 在 `getInitialFeedbackData` 中已设为当天
-  // `feedbackData.punctuality` 在 `getInitialFeedbackData` 中已设为 "准时"
-  // `feedbackData.classTime` 在 `getInitialFeedbackData` 中已设为 '' (空)
-  fetchHistory()
-})
-
-watch(
-  () => [route.params.courseId, route.params.studentId],
-  ([newCourseId, newStudentId], [oldCourseId, oldStudentId]) => {
-    if (
-      newCourseId &&
-      newStudentId &&
-      (newCourseId !== oldCourseId || newStudentId !== oldStudentId)
-    ) {
-      fetchHistory()
-      resetForm()
-    }
-  },
-  { immediate: false },
-)
-
-watch(
-  () => studentStore.currentStudent,
-  (newStudent, oldStudent) => {
-    if (newStudent && (!oldStudent || newStudent._id !== oldStudent._id)) {
-      if (route.params.studentId === newStudent._id) {
-        fetchHistory()
-        resetForm()
-      }
-    } else if (!newStudent && oldStudent) {
-      feedbackStore.clearHistory()
-      resetForm()
-    }
-  },
-)
-
-// --- 历史反馈删除功能 ---
-const handleDeleteFeedback = async (feedbackId) => {
-  if (!feedbackId) return
-  try {
-    await ElMessageBox.confirm('确定要删除这条反馈记录吗？此操作无法撤销。', '确认删除', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-
-    // 【【假设 feedbackStore 中有 deleteFeedback action，并且 feedbackService 中有对应方法】】
-    // const courseId = route.params.courseId;
-    // const studentId = route.params.studentId;
-    // const success = await feedbackStore.deleteFeedback(courseId, studentId, feedbackId);
-
-    // 【【临时前端模拟删除，后续需要您实现后端和store的删除逻辑】】
-    ElMessage.warning('删除功能后端接口待实现。此处仅为前端模拟。')
-    feedbackStore.feedbackHistory = feedbackStore.feedbackHistory.filter(
-      (fb) => fb._id !== feedbackId,
+  if (!success) {
+    return Promise.reject(
+      new Error(feedbackStore.submissionError || '提交反馈失败，请检查网络或联系管理员'),
     )
-    // 【【模拟结束】】
-
-    // if (success) {
-    //   ElMessage.success('反馈删除成功！');
-    //   fetchHistory(); // 重新获取列表
-    // } else {
-    //   ElMessage.error(feedbackStore.error || '删除反馈失败');
-    // }
-  } catch (e) {
-    if (e !== 'cancel') {
-      console.error('删除反馈时出错:', e)
-      ElMessage.error('删除操作取消或发生错误')
-    }
   }
+  return success
 }
 
-// --- 历史反馈文本生成相关 ---
-// (generateSingleHistoryFeedbackText, allHistoryAsText, copyAllHistoryText, calculateTextareaRows 保持不变,
-//  但要确保 formatDisplayDate 在它们之前定义或可访问)
+const {
+  form: feedbackForm,
+  formRef: feedbackFormRef,
+  isSubmitting,
+  submissionError,
+  submissionSuccess,
+  handleSubmit: performSubmit,
+  resetForm: resetFeedbackFormInternal,
+  setFormData: setFeedbackFormDataInternal,
+} = useForm(getInitialFeedbackFormState, submitFeedbackAction)
 
-const generateSingleHistoryFeedbackText = (historyItem) => {
-  if (!historyItem) return ''
-  const itemStudentName = studentStore.currentStudent?.name || '学生'
-  const itemTeacherName = authStore.currentUser?.username || '老师'
-  const itemCourseName = courseStore.currentCourse?.name || '课程'
-  let timeToDisplay = historyItem.classTime || '未记录'
+const feedbackPreviewText = ref('')
 
-  return `
---- 记录于: ${formatDisplayDate(historyItem.createdAt, true)} ---
-【学生姓名】：${itemStudentName}
-【上课日期】：${formatDisplayDate(historyItem.feedbackDate)}
-【上课时间】：${timeToDisplay}
-【授课老师】：${itemTeacherName}
-【授课科目】：${itemCourseName}
+const generateFeedbackPreview = () => {
+  let preview = `日期: ${feedbackForm.feedbackDate ? dayjs(feedbackForm.feedbackDate).format('YYYY年MM月DD日') : '未填写'}\n`
+  if (feedbackForm.classTime) {
+    preview += `时间: ${feedbackForm.classTime}\n`
+  }
+  // 使用 currentStudent.value 因为它是 computed ref
+  preview += `学生: ${currentStudent.value?.name || '未知学生'}\n`
+  // 使用 currentUser.value 和 currentCourse.value
+  preview += `授课老师: ${currentUser.value?.username || 'N/A'}\n`
+  preview += `授课科目: ${currentCourse.value?.name || 'N/A'}\n\n`
 
-【上次举一反三布置时间】：${formatDisplayDate(historyItem.lastExtrapolationAssignmentDate)}
-【上次作业完成情况】：${historyItem.lastHomeworkStatus || '/'}
-【上次作业完成反馈】：${historyItem.lastHomeworkFeedback || '无'}
+  preview += `上次作业完成情况: \n${feedbackForm.lastHomeworkStatus || '无记录'}\n\n`
+  preview += `上次作业完成反馈: \n${feedbackForm.lastHomeworkFeedback || '无记录'}\n\n`
+  if (feedbackForm.lastExtrapolationAssignmentDate) {
+    preview += `上次举一反三布置于: ${dayjs(feedbackForm.lastExtrapolationAssignmentDate).format('YYYY年MM月DD日')}\n\n`
+  }
 
-【本次授课内容】：
-${historyItem.teachingContent || '无'}
+  preview += `【本次授课内容】:\n${feedbackForm.teachingContent || '无记录'}\n\n`
+  preview += `【本次课堂表现】:\n${feedbackForm.classPerformance || '无记录'}\n\n`
+  preview += `【进步之处】:\n${feedbackForm.progressMade || '无记录'}\n\n`
+  preview += `【仍需努力】:\n${feedbackForm.areasForImprovement || '无记录'}\n\n`
+  preview += `【课堂准时度】: ${feedbackForm.punctuality || '无记录'}\n`
+  preview += `【举一反三能力】: ${feedbackForm.extrapolationAbility || '无记录'}\n`
 
-【本次课堂表现】：
-${historyItem.classPerformance || '无'}
-
-【进步之处】：
-${historyItem.progressMade || '无'}
-
-【欠缺之处】：
-${historyItem.areasForImprovement || '无'}
-
-【准时度】：${historyItem.punctuality || '未记录'}
-
-【举一反三】：
-${historyItem.extrapolationAbility || '无'}
-------------------------------------
-  `.trim()
+  feedbackPreviewText.value = preview
 }
 
-const allHistoryAsText = computed(() => {
-  if (!feedbackStore.feedbackHistory || feedbackStore.feedbackHistory.length === 0) {
-    return ''
-  }
-  return feedbackStore.feedbackHistory
-    .map((item) => generateSingleHistoryFeedbackText(item))
-    .join('\n\n')
-})
-
-const copyAllHistoryText = async () => {
-  if (!allHistoryAsText.value) {
-    ElMessage.warning('没有可复制的历史反馈文本')
+const handleSubmitFeedback = async () => {
+  if (!feedbackPreviewText.value.trim()) {
+    ElMessage.warning('请先生成或填写反馈预览内容！')
     return
   }
-  try {
-    await navigator.clipboard.writeText(allHistoryAsText.value)
-    ElMessage.success('所有历史反馈文本已复制到剪贴板！')
-  } catch (err) {
-    ElMessage.error('复制失败，您的浏览器可能不支持或未授权剪贴板操作，请手动复制。')
-    console.error('Failed to copy all history text: ', err)
+  const success = await performSubmit()
+  if (success) {
+    ElMessage.success('反馈提交成功！')
+    await resetFormVisuals()
+    const courseId = route.params.courseId
+    const studentId = route.params.studentId
+    if (courseId && studentId) {
+      await feedbackStore.fetchFeedbackForStudent(courseId, studentId)
+    }
   }
 }
 
-const calculateTextareaRows = (historyCount) => {
-  if (historyCount === 0) return 5
-  return Math.max(10, Math.min(30, historyCount * 10))
+const resetFormVisuals = async () => {
+  await resetFeedbackFormInternal()
+  feedbackPreviewText.value = ''
+  feedbackForm.feedbackDate = dayjs().format('YYYY-MM-DD')
 }
+
+const loadFeedbackForEditing = (feedbackItem) => {
+  if (!feedbackItem) return
+
+  setFeedbackFormDataInternal({
+    // 从历史记录中提取的字段，用于填充左侧表单
+    // classTime: feedbackItem.classTime || '', // <--- 修改点：不再从历史记录加载上课时间
+    lastHomeworkStatus: feedbackItem.lastHomeworkStatus || '',
+    lastHomeworkFeedback: feedbackItem.lastHomeworkFeedback || '',
+    teachingContent: feedbackItem.teachingContent || '',
+    classPerformance: feedbackItem.classPerformance || '',
+    progressMade: feedbackItem.progressMade || '',
+    areasForImprovement: feedbackItem.areasForImprovement || '',
+    punctuality: feedbackItem.punctuality || '',
+    extrapolationAbility: feedbackItem.extrapolationAbility || '',
+
+    // feedbackDate: null, // <--- 修改点：这里不再需要设置，下面会直接覆盖为当天
+    lastExtrapolationAssignmentDate: feedbackItem.feedbackDate // 这里仍然是旧的反馈日期，用于“上次举一反三布置于”
+      ? dayjs(feedbackItem.feedbackDate).format('YYYY-MM-DD')
+      : null,
+
+    // 新增：确保这些字段也被传递，即使它们在加载时被特殊处理
+    classTime: '', // <--- 修改点：上课时间永远默认为空
+    feedbackDate: dayjs().format('YYYY-MM-DD'), // <--- 修改点：反馈日期永远是当天
+  })
+
+  // !!! 重要：在 setFeedbackFormDataInternal 之后，再次强制设置 feedbackDate 和 classTime
+  // 因为 useForm 的 setFormData 可能会基于 getInitialFormState，我们需要确保我们的特定逻辑覆盖它
+  feedbackForm.feedbackDate = dayjs().format('YYYY-MM-DD') // <--- 再次确保是当天
+  feedbackForm.classTime = '' // <--- 再次确保上课时间为空
+
+  // 如果历史记录中存储了生成的文本，则直接用于预览
+  if (feedbackItem.generatedFeedbackText) {
+    feedbackPreviewText.value = feedbackItem.generatedFeedbackText
+  } else {
+    // 否则，根据填充到表单的结构化数据重新生成预览
+    // 因为 feedbackDate 和 classTime 已经改变，所以预览也会反映这些变化
+    generateFeedbackPreview()
+  }
+  ElMessage.info('历史反馈已加载，请选择上课时间并重新选择反馈日期后提交。') // 可以更新提示信息
+}
+
+onMounted(async () => {
+  const courseId = route.params.courseId
+  const studentId = route.params.studentId
+
+  // 确保 Pinia stores 中的数据已准备好
+  // 这里的逻辑可能需要依赖 AppLayout 或全局初始化确保 courseStore.currentCourse 和 studentStore.selectedStudent 已被填充
+  if (!courseStore.currentCourse && courseId) {
+    await courseStore.selectCourse(courseId) // 确保课程数据已加载
+  }
+  if (
+    (!studentStore.selectedStudent || studentStore.selectedStudent._id !== studentId) &&
+    studentId &&
+    courseId
+  ) {
+    await studentStore.fetchStudentsInCourseAndSetCurrent(courseId, studentId) // 确保学生数据已加载并设置为当前
+  }
+
+  if (studentId && courseId) {
+    await feedbackStore.fetchFeedbackForStudent(courseId, studentId)
+  }
+  await resetFormVisuals()
+})
+
+watch(
+  () => route.params.studentId,
+  async (newStudentId, oldStudentId) => {
+    if (newStudentId && newStudentId !== oldStudentId) {
+      const courseId = route.params.courseId
+      // 确保切换学生时，studentStore.selectedStudent 也更新
+      if (courseId) {
+        await studentStore.fetchStudentsInCourseAndSetCurrent(courseId, newStudentId)
+      }
+      await feedbackStore.fetchFeedbackForStudent(courseId, newStudentId)
+      await resetFormVisuals()
+    } else if (!newStudentId) {
+      await resetFormVisuals()
+      feedbackStore.clearHistory()
+      studentStore.setCurrentStudent(null) // 清空当前学生
+    }
+  },
+)
 </script>
 
 <template>
-  <div class="class-feedback-tab-page p-4">
-    <el-form :model="feedbackData" ref="feedbackFormRef" label-position="top">
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-card shadow="never">
-            <template #header>
-              <div class="card-header">
-                <span>课堂反馈表单</span>
-              </div>
-            </template>
-
-            <el-row :gutter="16">
-              <el-col :span="12">
-                <el-form-item label="日期" prop="feedbackDate">
-                  <el-date-picker
-                    v-model="feedbackData.feedbackDate"
-                    type="date"
-                    placeholder="选择日期"
-                    style="width: 100%"
-                    format="YYYY-MM-DD"
-                    value-format="YYYY-MM-DD"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="时间" prop="classTime">
-                  <el-select
-                    v-model="feedbackData.classTime"
-                    placeholder="选择时间"
-                    style="width: 100%"
-                  >
-                    <el-option
-                      v-for="item in timeOptions"
-                      :key="item.value"
-                      :label="item.label"
-                      :value="item.value"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item v-if="feedbackData.isCustomTime" label="自定义时间范围">
-                  <el-time-picker
-                    v-model="feedbackData.customClassTimeStart"
-                    placeholder="开始时间"
-                    format="HH:mm"
-                    value-format="HH:mm"
-                    style="width: calc(50% - 5px); margin-right: 10px"
-                  />
-                  <el-time-picker
-                    v-model="feedbackData.customClassTimeEnd"
-                    placeholder="结束时间"
-                    format="HH:mm"
-                    value-format="HH:mm"
-                    style="width: calc(50% - 5px)"
-                  />
-                </el-form-item>
-              </el-col>
-            </el-row>
-
-            <el-row :gutter="16">
-              <el-col :span="12">
-                <el-form-item label="学生">
-                  <el-input :value="studentName" readonly />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="授课老师">
-                  <el-input :value="teacherName" readonly />
-                </el-form-item>
-              </el-col>
-            </el-row>
-
-            <el-form-item label="授课科目">
-              <el-input :value="courseName" readonly />
-            </el-form-item>
-
-            <el-form-item label="上次举一反三布置时间" prop="lastExtrapolationAssignmentDate">
-              <el-date-picker
-                v-model="feedbackData.lastExtrapolationAssignmentDate"
-                type="date"
-                placeholder="选择日期"
-                style="width: 100%"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-                clearable
-              />
-            </el-form-item>
-
-            <el-form-item label="【完成情况】" prop="lastHomeworkStatus">
-              <el-input
-                v-model="feedbackData.lastHomeworkStatus"
-                type="textarea"
-                :rows="2"
-                placeholder="描述上次作业或任务的完成情况"
-              />
-            </el-form-item>
-
-            <el-form-item label="【完成反馈】" prop="lastHomeworkFeedback">
-              <el-input
-                v-model="feedbackData.lastHomeworkFeedback"
-                type="textarea"
-                :rows="2"
-                placeholder="对完成情况的反馈或评价"
-              />
-            </el-form-item>
-
-            <el-form-item label="授课内容" prop="teachingContent">
-              <el-input
-                v-model="feedbackData.teachingContent"
-                type="textarea"
-                :rows="3"
-                placeholder="简述本次课主要内容"
-              />
-            </el-form-item>
-
-            <el-form-item label="本次课堂表现" prop="classPerformance">
-              <el-input
-                v-model="feedbackData.classPerformance"
-                type="textarea"
-                :rows="3"
-                placeholder="简述学生本次课堂的表现"
-              />
-            </el-form-item>
-
-            <el-form-item label="进步之处" prop="progressMade">
-              <el-input
-                v-model="feedbackData.progressMade"
-                type="textarea"
-                :rows="2"
-                placeholder="内部记录：观察到的进步"
-              />
-            </el-form-item>
-
-            <el-form-item label="欠缺之处" prop="areasForImprovement">
-              <el-input
-                v-model="feedbackData.areasForImprovement"
-                type="textarea"
-                :rows="2"
-                placeholder="内部记录：观察到的不足"
-              />
-            </el-form-item>
-
-            <el-form-item label="准时度" prop="punctuality">
-              <el-input v-model="feedbackData.punctuality" placeholder="简述是否准时" />
-            </el-form-item>
-
-            <el-form-item label="举一反三" prop="extrapolationAbility">
-              <el-input
-                v-model="feedbackData.extrapolationAbility"
-                type="textarea"
-                :rows="2"
-                placeholder="布置下次课堂要完成的任务或准备"
-              />
-            </el-form-item>
-          </el-card>
-        </el-col>
-
-        <el-col :span="12">
-          <el-card shadow="never" style="height: 100%">
-            <template #header>
-              <div class="card-header">
-                <span>反馈预览 (可编辑)</span>
-              </div>
-            </template>
-            <el-input
-              type="textarea"
-              v-model="feedbackData.editablePreviewText"
-              :rows="20"
-              placeholder="生成的预览文本将显示在这里，您可以直接修改"
-            />
-            <div style="margin-top: 10px; text-align: right">
-              <el-button @click="copyGeneratedText">复制文本</el-button>
-              <el-button
-                type="primary"
-                @click="submitFeedback"
-                :loading="feedbackStore.isSubmitting"
-              >
-                保存反馈
-              </el-button>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-    </el-form>
-
-    <!-- <div class="history-feedback-section mt-6">
-      <h3>历史反馈</h3>
-    </div> -->
-
-    <div
-      class="history-feedback-section mt-6"
-      v-if="feedbackStore.feedbackHistory && feedbackStore.feedbackHistory.length > 0"
-    >
-      <el-divider />
-      <h3 style="margin-bottom: 16px; text-align: center; font-size: 1.2em">历史反馈记录</h3>
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <h4>反馈列表</h4>
-          <el-timeline style="margin-top: 10px">
-            <el-timeline-item
-              v-for="item in feedbackStore.feedbackHistory"
-              :key="item._id"
-              :timestamp="
-                formatDisplayDate(item.feedbackDate) + (item.classTime ? ' ' + item.classTime : '')
-              "
-              placement="top"
+  <div class="class-feedback-tab-page">
+    <el-row :gutter="20">
+      <el-col :xs="24" :sm="24" :md="16">
+        <el-card shadow="never" style="height: 100%">
+          <div v-if="currentStudent">
+            <el-form
+              ref="feedbackFormRef"
+              :model="feedbackForm"
+              label-width="auto"
+              label-position="top"
+              @submit.prevent
             >
-              <el-card @click="populateFormWithHistory(item)" style="cursor: pointer">
-                <template #header v-if="false">
-                  {/* Element Plus Card 的 header 不太适合放按钮，我们放内容区底部 */}
-                </template>
-                <p><strong>授课内容:</strong> {{ item.teachingContent }}</p>
-                <p class="subtle-text">
-                  <small>记录于: {{ formatDisplayDate(item.createdAt, true) }}</small>
-                </p>
+              <el-row :gutter="15">
+                <el-col :xs="24" :sm="5" md="5">
+                  <el-form-item label="反馈日期" prop="feedbackDate">
+                    <el-date-picker
+                      v-model="feedbackForm.feedbackDate"
+                      type="date"
+                      placeholder="选择日期"
+                      format="YYYY-MM-DD"
+                      value-format="YYYY-MM-DD"
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
 
-                <div style="margin-top: 10px; text-align: right">
-                  <!-- {/* 新增删除按钮区域 */} -->
-                  <el-button type="danger" size="small" @click.stop="handleDeleteFeedback(item._id)"
-                    >删除</el-button
-                  >
-                  <!-- {/* @click.stop 防止触发卡片的点击事件 */} -->
-                </div>
-              </el-card>
-            </el-timeline-item>
-          </el-timeline>
-          <el-empty
-            v-if="!feedbackStore.feedbackHistory.length && !feedbackStore.isLoadingHistory"
-            description="暂无历史反馈记录"
-          ></el-empty>
-          <div v-if="feedbackStore.isLoadingHistory" v-loading="true" style="height: 100px"></div>
-        </el-col>
+                <el-col :xs="24" :sm="5" md="5">
+                  <el-form-item label="上课时间" prop="classTime">
+                    <el-time-select
+                      v-model="feedbackForm.classTime"
+                      start="08:00"
+                      step="00:15"
+                      end="22:00"
+                      placeholder="选择时间 (可选)"
+                      style="width: 100%"
+                      clearable
+                    />
+                  </el-form-item>
+                </el-col>
 
-        <el-col :span="12">
-          <h4>纯文本汇总</h4>
+                <el-col :xs="24" :sm="4" md="4">
+                  <el-form-item label="学生">
+                    <el-input
+                      :value="currentStudent?.name || 'N/A'"
+                      readonly
+                      disabled
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+
+                <el-col :xs="24" :sm="5" md="5">
+                  <el-form-item label="授课老师">
+                    <el-input
+                      :value="currentUser?.username || 'N/A'"
+                      readonly
+                      disabled
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+
+                <el-col :xs="24" :sm="5" md="5">
+                  <el-form-item label="授课科目">
+                    <el-input
+                      :value="currentCourse?.name || 'N/A'"
+                      readonly
+                      disabled
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-form-item label="上次举一反三布置时间" prop="lastExtrapolationAssignmentDate">
+                <el-date-picker
+                  v-model="feedbackForm.lastExtrapolationAssignmentDate"
+                  type="date"
+                  placeholder="选择日期 (若有)"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                  style="width: 100%"
+                  clearable
+                />
+              </el-form-item>
+
+              <el-form-item label="完成情况" prop="lastHomeworkStatus">
+                <el-input
+                  type="textarea"
+                  :rows="2"
+                  v-model="feedbackForm.lastHomeworkStatus"
+                  placeholder="记录上次作业内容和学生完成情况"
+                />
+              </el-form-item>
+              <el-form-item label="完成反馈" prop="lastHomeworkFeedback">
+                <el-input
+                  type="textarea"
+                  :rows="2"
+                  v-model="feedbackForm.lastHomeworkFeedback"
+                  placeholder="对学生上次作业的评价和反馈"
+                />
+              </el-form-item>
+
+              <el-form-item label="本次授课内容" prop="teachingContent">
+                <el-input
+                  type="textarea"
+                  :rows="3"
+                  v-model="feedbackForm.teachingContent"
+                  placeholder="简要记录本次课的主要教学点"
+                />
+              </el-form-item>
+              <el-form-item label="本次课堂表现 " prop="classPerformance">
+                <el-input
+                  type="textarea"
+                  :rows="3"
+                  v-model="feedbackForm.classPerformance"
+                  placeholder="学生在本次课堂上的具体表现"
+                />
+              </el-form-item>
+              <el-form-item label="进步" prop="progressMade">
+                <el-input
+                  type="textarea"
+                  :rows="2"
+                  v-model="feedbackForm.progressMade"
+                  placeholder="本次观察到的学生进步点"
+                />
+              </el-form-item>
+              <el-form-item label="欠缺" prop="areasForImprovement">
+                <el-input
+                  type="textarea"
+                  :rows="2"
+                  v-model="feedbackForm.areasForImprovement"
+                  placeholder="学生在哪些方面仍需加强"
+                />
+              </el-form-item>
+              <el-row :gutter="15">
+                <el-col :span="12">
+                  <el-form-item label="课堂准时度" prop="punctuality">
+                    <el-input
+                      v-model="feedbackForm.punctuality"
+                      placeholder="例如：准时、迟到5分钟等"
+                    />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="举一反三" prop="extrapolationAbility">
+                    <el-input
+                      v-model="feedbackForm.extrapolationAbility"
+                      placeholder="描述学生触类旁通的能力"
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-form-item style="margin-top: 20px">
+                <el-button
+                  type="primary"
+                  @click="generateFeedbackPreview"
+                  icon="el-icon-refresh-right"
+                  >生成反馈预览</el-button
+                >
+                <el-button @click="resetFormVisuals" icon="el-icon-refresh">重置表单</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+          <el-empty v-else description="请先在左侧选择一个学生以填写或查看反馈。"></el-empty>
+        </el-card>
+      </el-col>
+
+      <el-col :xs="24" :sm="24" :md="8" :lg="8">
+        <el-card shadow="never" style="height: 100%">
+          <template #header>
+            <div class="card-header">
+              <span>反馈预览 (可编辑)</span>
+            </div>
+          </template>
           <el-input
             type="textarea"
-            :value="allHistoryAsText"
-            :rows="calculateTextareaRows(feedbackStore.feedbackHistory.length)"
-            readonly
-            style="margin-top: 10px"
-            placeholder="历史反馈文本将汇总于此"
+            :rows="26"
+            placeholder="点击“生成反馈预览”按钮后，会在此处显示反馈内容，您可以直接编辑。最终提交的是此区域的内容。"
+            v-model="feedbackPreviewText"
+            :disabled="!currentStudent"
           />
-          <el-button @click="copyAllHistoryText" v-if="allHistoryAsText" style="margin-top: 10px">
-            复制所有历史文本
+          <el-button
+            type="success"
+            @click="handleSubmitFeedback"
+            :loading="isSubmitting"
+            :disabled="!currentStudent || !feedbackPreviewText.trim()"
+            style="width: 100%; margin-top: 15px"
+            icon="el-icon-check"
+          >
+            提交此反馈
           </el-button>
-        </el-col>
-      </el-row>
+          <div
+            v-if="submissionError"
+            class="error-message"
+            style="margin-top: 10px; text-align: center"
+          >
+            提交失败: {{ submissionError }}
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-divider content-position="center" style="margin-top: 30px">历史反馈记录</el-divider>
+
+    <div v-if="!currentStudent" class="no-history">
+      <el-empty description="请先选择学生查看历史反馈。"></el-empty>
     </div>
-    <el-empty
-      v-else-if="!feedbackStore.isLoadingHistory"
-      description="暂无历史反馈记录，快去添加第一条吧！"
-      style="margin-top: 20px"
-    ></el-empty>
-    <div
-      v-if="
-        feedbackStore.isLoadingHistory &&
-        (!feedbackStore.feedbackHistory || feedbackStore.feedbackHistory.length === 0)
-      "
-      v-loading="true"
-      style="height: 100px; margin-top: 20px"
-    ></div>
+    <div v-else>
+      <div v-if="isLoadingHistory" class="loading-history">
+        <p>正在加载历史反馈...</p>
+        <el-skeleton :rows="5" animated />
+      </div>
+      <div v-else-if="feedbackHistory.length === 0" class="no-history">
+        <el-empty :description="`${currentStudent.name} 暂无历史反馈记录。`"></el-empty>
+      </div>
+      <el-timeline v-else>
+        <el-timeline-item
+          v-for="item in feedbackHistory"
+          :key="item._id"
+          :timestamp="
+            dayjs(item.feedbackDate).format('YYYY-MM-DD') +
+            (item.classTime ? ' ' + item.classTime : '')
+          "
+          placement="top"
+        >
+          <el-card>
+            <template #header>
+              <div>
+                反馈于: {{ dayjs(item.feedbackDate).format('YYYY年MM月DD日') }}
+                <span v-if="item.classTime"> {{ item.classTime }}</span>
+              </div>
+            </template>
+            <div
+              class="feedback-content-display"
+              v-if="item.generatedFeedbackText"
+              v-html="item.generatedFeedbackText.replace(/\n/g, '<br>')"
+            ></div>
+            <div v-else>
+              <p><strong>授课内容:</strong> {{ item.teachingContent || 'N/A' }}</p>
+              <p><strong>课堂表现:</strong> {{ item.classPerformance || 'N/A' }}</p>
+              <p v-if="item.lastHomeworkStatus">
+                <strong>上次作业:</strong> {{ item.lastHomeworkStatus }}
+              </p>
+              <p v-if="item.lastHomeworkFeedback">
+                <strong>完成反馈:</strong> {{ item.lastHomeworkFeedback }}
+              </p>
+              <p v-if="item.lastExtrapolationAssignmentDate">
+                <strong>上次举一反三布置:</strong>
+                {{ dayjs(item.lastExtrapolationAssignmentDate).format('YYYY-MM-DD') }}
+              </p>
+              <p v-if="item.progressMade"><strong>进步:</strong> {{ item.progressMade }}</p>
+              <p v-if="item.areasForImprovement">
+                <strong>欠缺:</strong> {{ item.areasForImprovement }}
+              </p>
+            </div>
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click="loadFeedbackForEditing(item)"
+              style="margin-top: 10px"
+              icon="el-icon-edit"
+            >
+              加载此记录到表单 (编辑模式)
+            </el-button>
+          </el-card>
+        </el-timeline-item>
+      </el-timeline>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .class-feedback-tab-page {
-  max-width: 1400px; /* 根据需要调整最大宽度 */
-  margin: auto;
+  padding: 15px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
-.mt-6 {
-  margin-top: 24px;
+.el-row {
+  flex-shrink: 0; /* 防止表单和预览区在空间不足时被压缩 */
+}
+.el-col {
+  margin-bottom: 15px; /* 为小屏幕堆叠时提供间距 */
 }
 .card-header {
-  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 16px;
 }
-/* 如果需要，可以添加更多样式 */
-
-.history-feedback-section {
-  margin-top: 24px;
-  padding-top: 20px; /* 与 el-divider 保持一些间距 */
+.error-message {
+  color: var(--el-color-error);
+  font-size: 12px;
 }
-.el-timeline-item__timestamp {
-  font-size: 13px;
+.loading-history,
+.no-history {
+  text-align: center;
+  color: #909399;
+  padding: 20px 0;
+}
+.el-timeline {
+  margin-top: 20px;
+  padding-left: 5px; /* 给时间线左侧留出一点空间 */
+}
+.feedback-content-display {
+  white-space: pre-wrap; /* 保留换行和空格 */
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.6;
   color: #606266;
 }
-.el-card p {
-  margin-bottom: 8px;
-  line-height: 1.6;
+.el-card {
+  border: 1px solid var(--el-border-color-lighter);
 }
-.el-card p:last-child {
-  margin-bottom: 0;
+/* 确保卡片内容区有最小高度，即使内容很少 */
+.el-card :deep(.el-card__body) {
+  min-height: 100px;
 }
-.subtle-text small {
-  color: #909399;
-  font-size: 0.85em;
+/* 为了让左右两栏在小屏幕上能更好地堆叠，并且textarea有足够高度 */
+@media (max-width: 768px) {
+  .el-col {
+    margin-bottom: 20px;
+  }
+  .el-row > .el-col:last-child .el-input :deep(textarea) {
+    min-height: 200px !important; /* 增加预览区在小屏幕上的最小高度 */
+  }
 }
-.el-empty {
-  padding: 20px 0;
+/* 微调一下 el-form-item 的下边距，使其更紧凑 */
+.el-form-item {
+  margin-bottom: 18px;
 }
 </style>
