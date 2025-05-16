@@ -1,6 +1,7 @@
 // src/store/feedbackStore.js
 import { defineStore } from 'pinia'
 import * as feedbackService from '../services/feedbackService' // 导入反馈服务
+import { useMonthlySummaryStore } from './monthlySummaryStore'
 
 export const useFeedbackStore = defineStore('feedback', {
   state: () => ({
@@ -45,15 +46,28 @@ export const useFeedbackStore = defineStore('feedback', {
       this.isSubmitting = true
       this.submissionError = null
       try {
-        // 后端 feedbackController 的 addFeedback 期望的字段，确保 feedbackData 结构正确
-        const response = await feedbackService.addFeedback(courseId, studentId, feedbackData) // 使用 FeedbackService
+        const response = await feedbackService.addFeedback(courseId, studentId, feedbackData)
         if (response.status === 201 && response.data.feedback) {
-          // 提交成功后，可以选择将新反馈添加到 feedbackHistory 的开头，或者重新获取整个列表
-          // this.feedbackHistory.unshift(response.data.feedback);
-          // 更好的做法是让调用者决定是否刷新列表
+          const savedFeedback = response.data.feedback
+          // 刷新反馈历史列表
+          // this.feedbackHistory.unshift(savedFeedback); // 或者重新 fetch
+          // 最好是让调用者决定是否刷新列表，或者在提交成功后总是刷新
+          // await this.fetchFeedbackForStudent(courseId, studentId); // 通常在 ClassFeedbackTabPage 中会调用
+
+          // --- 修改开始: 添加反馈成功后，通知月度总结更新 ---
+          if (savedFeedback.feedbackDate) {
+            //确保有反馈日期
+            const monthlySummaryStore = useMonthlySummaryStore()
+            await monthlySummaryStore.refreshCurrentMonthSummaryForFeedbackChange(
+              courseId,
+              studentId,
+              savedFeedback.feedbackDate, // 使用已保存反馈的日期
+            )
+          }
+          // --- 修改结束 ---
           return true
         }
-        return false // 或抛出错误
+        return false
       } catch (err) {
         this.submissionError = err.response?.data?.message || '提交反馈失败'
         console.error('addFeedback error:', err)
@@ -66,30 +80,34 @@ export const useFeedbackStore = defineStore('feedback', {
     async deleteFeedback(courseId, studentId, feedbackId) {
       if (!courseId || !studentId || !feedbackId) {
         this.deleteError = '删除反馈时缺少必要的ID信息'
-        // 或者 this.error = '...'; // 如果你用一个通用的 error state
         return false
       }
       this.isDeleting = true
       this.deleteError = null
-      // this.error = null; // 如果用通用 error state
 
       try {
-        // 【重要】调用 feedbackService 中的 deleteFeedback 方法，这个方法我们稍后定义
-        await feedbackService.deleteFeedback(courseId, studentId, feedbackId)
+        // --- 修改开始: 在删除前获取要删除的反馈的日期 ---
+        const feedbackToDelete = this.feedbackHistory.find((fb) => fb._id === feedbackId)
+        const feedbackDateOfDeleted = feedbackToDelete ? feedbackToDelete.feedbackDate : null
+        // --- 修改结束 ---
 
-        // 删除成功后，可以直接从本地 feedbackHistory 移除该项，
-        // 或者重新调用 fetchFeedbackForStudent 来刷新整个列表。
-        // 直接移除更高效，但重新获取能确保数据与后端完全同步。
-        // 示例：直接从本地移除
+        await feedbackService.deleteFeedback(courseId, studentId, feedbackId)
         this.feedbackHistory = this.feedbackHistory.filter((fb) => fb._id !== feedbackId)
 
-        // 或者示例：重新获取列表 (如果选择这种方式，上面的 filter 就不需要了)
-        // await this.fetchFeedbackForStudent(courseId, studentId);
-
+        // --- 修改开始: 删除反馈成功后，通知月度总结更新 ---
+        if (feedbackDateOfDeleted) {
+          // 确保获取到了日期
+          const monthlySummaryStore = useMonthlySummaryStore()
+          await monthlySummaryStore.refreshCurrentMonthSummaryForFeedbackChange(
+            courseId,
+            studentId,
+            feedbackDateOfDeleted, // 使用被删除反馈的日期
+          )
+        }
+        // --- 修改结束 ---
         return true
       } catch (err) {
         this.deleteError = err.response?.data?.message || '删除反馈记录失败'
-        // this.error = err.response?.data?.message || '删除反馈记录失败';
         console.error('deleteFeedback action error:', err)
         return false
       } finally {

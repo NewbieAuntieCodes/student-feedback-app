@@ -71,6 +71,13 @@ const feedbackSchema = new Schema({
     trim: true,
     default: "",
   },
+  // --- 新增字段 ---
+  improvementPlan: {
+    // 提升方案
+    type: String,
+    trim: true,
+    default: "",
+  },
   punctuality: {
     // 截图中的“准时度”
     type: String,

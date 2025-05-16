@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useFeedbackStore } from '@/store/feedbackStore'
 import { useStudentStore } from '@/store/studentStore'
@@ -45,8 +45,10 @@ const getInitialFeedbackFormState = () => ({
   classPerformance: '学生上课认真，积极配合。',
   progressMade: '',
   areasForImprovement: '',
+  improvementPlan: '', // <--- 新增字段
   punctuality: '准时',
   extrapolationAbility: '',
+  generatedFeedbackText: '',
 })
 
 const submitFeedbackAction = async (formData) => {
@@ -65,15 +67,13 @@ const submitFeedbackAction = async (formData) => {
     lastExtrapolationAssignmentDate: formData.lastExtrapolationAssignmentDate
       ? dayjs(formData.lastExtrapolationAssignmentDate).toISOString()
       : null,
-    // teachingContent: formData.teachingContent, // 在新版需求中，这里应该提交预览文本
-    // classPerformance: formData.classPerformance, // 同上
-    // ... 其他结构化字段如果后端仍需要 ...
-    generatedFeedbackText: feedbackPreviewText.value, // 确保提交的是这个
-    // 如果后端仍然需要这些结构化字段，可以取消注释并确保后端 Feedback模型有对应字段
+    generatedFeedbackText: feedbackPreviewText.value, // 提交的是预览文本
+    // 结构化数据，确保后端 Feedback模型有对应字段
     teachingContent: formData.teachingContent,
     classPerformance: formData.classPerformance,
     progressMade: formData.progressMade,
     areasForImprovement: formData.areasForImprovement,
+    improvementPlan: formData.improvementPlan, // <--- 提升方案已包含
     punctuality: formData.punctuality,
     extrapolationAbility: formData.extrapolationAbility,
   }
@@ -162,6 +162,12 @@ const generateFeedbackPreview = () => {
     if (combinedPerformance) combinedPerformance += '\n'
     combinedPerformance += feedbackForm.areasForImprovement
   }
+
+  // --- 修改开始: 将提升方案加入到“本次课堂表现”的组合文本中 ---
+  if (feedbackForm.improvementPlan) {
+    if (combinedPerformance) combinedPerformance += '\n' // 如果前面有内容，则换行
+    combinedPerformance += feedbackForm.improvementPlan // 添加标签和内容
+  }
   preview += `【本次课堂表现】\n${combinedPerformance || '无记录'}\n\n`
 
   // 添加课堂准时度和举一反三能力，并修改标签格式
@@ -207,6 +213,7 @@ const loadFeedbackForEditing = (feedbackItem) => {
     classPerformance: feedbackItem.classPerformance || '',
     progressMade: feedbackItem.progressMade || '',
     areasForImprovement: feedbackItem.areasForImprovement || '',
+    improvementPlan: feedbackItem.improvementPlan || '',
     punctuality: feedbackItem.punctuality || '',
     extrapolationAbility: feedbackItem.extrapolationAbility || '',
 
@@ -472,23 +479,33 @@ watch(
               </el-row>
 
               <el-row :gutter="15">
-                <el-col :xs="24" :sm="12">
+                <el-col :xs="24" :sm="8">
                   <el-form-item label="进步" prop="progressMade">
                     <el-input
                       type="textarea"
-                      :autosize="{ minRows: 1, maxRows: 4 }"
+                      :autosize="{ minRows: 2, maxRows: 4 }"
                       v-model="feedbackForm.progressMade"
                       placeholder="本次观察到的学生进步点"
                     />
                   </el-form-item>
                 </el-col>
-                <el-col :xs="24" :sm="12">
+                <el-col :xs="24" :sm="8">
                   <el-form-item label="欠缺" prop="areasForImprovement">
                     <el-input
                       type="textarea"
-                      :autosize="{ minRows: 1, maxRows: 4 }"
+                      :autosize="{ minRows: 2, maxRows: 4 }"
                       v-model="feedbackForm.areasForImprovement"
                       placeholder="学生在哪些方面仍需加强"
+                    />
+                  </el-form-item>
+                </el-col>
+                <el-col :xs="24" :sm="8">
+                  <el-form-item label="提升方案" prop="improvementPlan">
+                    <el-input
+                      type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 4 }"
+                      v-model="feedbackForm.improvementPlan"
+                      placeholder="建议"
                     />
                   </el-form-item>
                 </el-col>
@@ -607,6 +624,9 @@ watch(
               <p v-if="item.progressMade"><strong>进步:</strong> {{ item.progressMade }}</p>
               <p v-if="item.areasForImprovement">
                 <strong>欠缺:</strong> {{ item.areasForImprovement }}
+              </p>
+              <p v-if="item.improvementPlan">
+                <strong>提升方案:</strong> {{ item.improvementPlan }}
               </p>
             </div>
             <el-button
