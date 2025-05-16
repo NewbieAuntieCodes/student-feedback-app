@@ -9,6 +9,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useForm } from '@/composables/useForm'
 import dayjs from 'dayjs'
 
+// 新增：定义上课时间选项
+const classTimeOptions = [
+  { value: '0900-1030', label: '09:00 - 10:30' },
+  { value: '1040-1210', label: '10:40 - 12:10' },
+  { value: '1330-1500', label: '13:30 - 15:00' },
+  { value: '1515-1645', label: '15:15 - 16:45' },
+  { value: '1700-1830', label: '17:00 - 18:30' },
+  { value: '1900-2030', label: '19:00 - 20:30' },
+  // 你可以根据需要添加更多自定义选项，或者留空让用户完全自定义输入
+]
+
 const route = useRoute()
 const feedbackStore = useFeedbackStore()
 const studentStore = useStudentStore()
@@ -31,10 +42,10 @@ const getInitialFeedbackFormState = () => ({
   lastHomeworkFeedback: '',
   lastExtrapolationAssignmentDate: null,
   teachingContent: '',
-  classPerformance: '',
+  classPerformance: '学生上课认真，积极配合。',
   progressMade: '',
   areasForImprovement: '',
-  punctuality: '',
+  punctuality: '准时',
   extrapolationAbility: '',
 })
 
@@ -89,30 +100,75 @@ const {
 
 const feedbackPreviewText = ref('')
 
+const copyFeedbackText = async () => {
+  if (!feedbackPreviewText.value) {
+    ElMessage.warning('没有可复制的反馈内容。')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(feedbackPreviewText.value)
+    ElMessage.success('反馈内容已复制到剪贴板！')
+  } catch (err) {
+    console.error('复制反馈内容失败:', err)
+    ElMessage.error('复制失败，您的浏览器可能不支持此功能或未授予权限。')
+  }
+}
+
 const generateFeedbackPreview = () => {
-  let preview = `日期: ${feedbackForm.feedbackDate ? dayjs(feedbackForm.feedbackDate).format('YYYY年MM月DD日') : '未填写'}\n`
+  // 获取学生姓名，如果当前没有选中学生，则显示“未知学生”
+  const studentName = currentStudent.value?.name || '未知学生'
+  // 获取反馈日期，并格式化为“YYYY年MM月DD日”，如果未填写则显示“未填写日期”
+  const formattedFeedbackDate = feedbackForm.feedbackDate
+    ? dayjs(feedbackForm.feedbackDate).format('YYYY年MM月DD日')
+    : '未填写日期'
+
+  // 构建标题部分
+  let preview = `【${studentName} ${formattedFeedbackDate} 教学反馈】\n` // 标题格式
+
+  // 添加上课时间，如果填写了的话
   if (feedbackForm.classTime) {
-    preview += `时间: ${feedbackForm.classTime}\n`
+    preview += `时间：${feedbackForm.classTime}\n`
   }
-  // 使用 currentStudent.value 因为它是 computed ref
-  preview += `学生: ${currentStudent.value?.name || '未知学生'}\n`
-  // 使用 currentUser.value 和 currentCourse.value
-  preview += `授课老师: ${currentUser.value?.username || 'N/A'}\n`
-  preview += `授课科目: ${currentCourse.value?.name || 'N/A'}\n\n`
 
-  preview += `上次作业完成情况: \n${feedbackForm.lastHomeworkStatus || '无记录'}\n\n`
-  preview += `上次作业完成反馈: \n${feedbackForm.lastHomeworkFeedback || '无记录'}\n\n`
+  // 添加老师和科目信息，注意这里去掉了“授课”二字
+  preview += `老师：${currentUser.value?.username || 'N/A'}\n`
+  preview += `科目：${currentCourse.value?.name || 'N/A'}\n\n`
+
+  // 添加上次举一反三布置时间，只显示月日，格式为“M月D日”
   if (feedbackForm.lastExtrapolationAssignmentDate) {
-    preview += `上次举一反三布置于: ${dayjs(feedbackForm.lastExtrapolationAssignmentDate).format('YYYY年MM月DD日')}\n\n`
+    preview += `上次举一反三布置时间：${dayjs(feedbackForm.lastExtrapolationAssignmentDate).format('M月D日')}\n`
   }
 
-  preview += `【本次授课内容】:\n${feedbackForm.teachingContent || '无记录'}\n\n`
-  preview += `【本次课堂表现】:\n${feedbackForm.classPerformance || '无记录'}\n\n`
-  preview += `【进步之处】:\n${feedbackForm.progressMade || '无记录'}\n\n`
-  preview += `【仍需努力】:\n${feedbackForm.areasForImprovement || '无记录'}\n\n`
-  preview += `【课堂准时度】: ${feedbackForm.punctuality || '无记录'}\n`
-  preview += `【举一反三能力】: ${feedbackForm.extrapolationAbility || '无记录'}\n`
+  // 添加完成情况和完成反馈
+  preview += `【完成情况】${feedbackForm.lastHomeworkStatus || '无记录'}\n` // 修改了标签格式
+  preview += `【完成反馈】${feedbackForm.lastHomeworkFeedback || '无记录'}\n\n` // 修改了标签格式
 
+  // 修改“本次授课内容”为“本次课堂内容”
+  preview += `【本次课堂内容】\n${feedbackForm.teachingContent || '无记录'}\n\n`
+
+  // 合并“本次课堂表现”、“进步之处”和“仍需努力”到“本次课堂表现”
+  // 确保每个部分的内容都存在时才添加，并在它们之间添加换行符（如果需要）
+  let combinedPerformance = ''
+  if (feedbackForm.classPerformance) {
+    combinedPerformance += feedbackForm.classPerformance
+  }
+  if (feedbackForm.progressMade) {
+    // 如果 combinedPerformance 已有内容，先加换行符
+    if (combinedPerformance) combinedPerformance += '\n'
+    combinedPerformance += feedbackForm.progressMade
+  }
+  if (feedbackForm.areasForImprovement) {
+    // 如果 combinedPerformance 已有内容，先加换行符
+    if (combinedPerformance) combinedPerformance += '\n'
+    combinedPerformance += feedbackForm.areasForImprovement
+  }
+  preview += `【本次课堂表现】\n${combinedPerformance || '无记录'}\n\n`
+
+  // 添加课堂准时度和举一反三能力，并修改标签格式
+  preview += `【准时度】\n${feedbackForm.punctuality || '无记录'}\n\n` // 增加了换行
+  preview += `【举一反三】\n${feedbackForm.extrapolationAbility || '无记录'}\n` // 增加了换行
+
+  // 更新反馈预览文本
   feedbackPreviewText.value = preview
 }
 
@@ -178,6 +234,52 @@ const loadFeedbackForEditing = (feedbackItem) => {
     generateFeedbackPreview()
   }
   ElMessage.info('历史反馈已加载，请选择上课时间并重新选择反馈日期后提交。') // 可以更新提示信息
+}
+
+const handleDeleteFeedback = async (feedbackId) => {
+  if (!feedbackId) return
+
+  try {
+    await ElMessageBox.confirm(
+      '您确定要永久删除这条反馈记录吗？此操作一旦执行将无法撤销。',
+      '确认删除反馈',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+
+    // 调用 store action 执行删除
+    const courseId = route.params.courseId
+    const studentId = route.params.studentId // studentId 从路由参数获取
+
+    if (!courseId || !studentId) {
+      ElMessage.error('无法确定课程或学生信息，删除失败。')
+      return
+    }
+
+    // 【重要】调用 store action，这个 action 我们稍后定义
+    const success = await feedbackStore.deleteFeedback(courseId, studentId, feedbackId)
+
+    if (success) {
+      ElMessage.success('反馈记录删除成功！')
+      // 删除成功后，通常需要重新获取反馈列表以更新UI
+      // feedbackStore.fetchFeedbackForStudent 应该在 store action 内部或此处被调用
+      // 如果 store action 内部已经刷新了列表，这里就不需要再调用了
+      // 假设 store action 会处理列表更新，或者我们在这里显式调用：
+      await feedbackStore.fetchFeedbackForStudent(courseId, studentId)
+    } else {
+      ElMessage.error(feedbackStore.error || '删除反馈记录失败，请重试。')
+    }
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('删除反馈时出错:', error)
+      ElMessage.error('删除操作时出现意外错误。')
+    } else {
+      ElMessage.info('删除操作已取消。')
+    }
+  }
 }
 
 onMounted(async () => {
@@ -252,15 +354,23 @@ watch(
 
                 <el-col :xs="24" :sm="5" md="5">
                   <el-form-item label="上课时间" prop="classTime">
-                    <el-time-select
+                    <el-select
                       v-model="feedbackForm.classTime"
-                      start="08:00"
-                      step="00:15"
-                      end="22:00"
                       placeholder="选择时间 (可选)"
                       style="width: 100%"
                       clearable
-                    />
+                      filterable
+                      allow-create
+                      default-first-option
+                    >
+                      <el-option
+                        v-for="item in classTimeOptions"
+                        :key="item.value"
+                        :label="item.label"
+                        :value="item.value"
+                      >
+                      </el-option>
+                    </el-select>
                   </el-form-item>
                 </el-col>
 
@@ -298,79 +408,103 @@ watch(
                 </el-col>
               </el-row>
 
-              <el-form-item label="上次举一反三布置时间" prop="lastExtrapolationAssignmentDate">
-                <el-date-picker
-                  v-model="feedbackForm.lastExtrapolationAssignmentDate"
-                  type="date"
-                  placeholder="选择日期 (若有)"
-                  format="YYYY-MM-DD"
-                  value-format="YYYY-MM-DD"
-                  style="width: 100%"
-                  clearable
-                />
-              </el-form-item>
-
-              <el-form-item label="完成情况" prop="lastHomeworkStatus">
-                <el-input
-                  type="textarea"
-                  :rows="2"
-                  v-model="feedbackForm.lastHomeworkStatus"
-                  placeholder="记录上次作业内容和学生完成情况"
-                />
-              </el-form-item>
-              <el-form-item label="完成反馈" prop="lastHomeworkFeedback">
-                <el-input
-                  type="textarea"
-                  :rows="2"
-                  v-model="feedbackForm.lastHomeworkFeedback"
-                  placeholder="对学生上次作业的评价和反馈"
-                />
-              </el-form-item>
-
-              <el-form-item label="本次授课内容" prop="teachingContent">
-                <el-input
-                  type="textarea"
-                  :rows="3"
-                  v-model="feedbackForm.teachingContent"
-                  placeholder="简要记录本次课的主要教学点"
-                />
-              </el-form-item>
-              <el-form-item label="本次课堂表现 " prop="classPerformance">
-                <el-input
-                  type="textarea"
-                  :rows="3"
-                  v-model="feedbackForm.classPerformance"
-                  placeholder="学生在本次课堂上的具体表现"
-                />
-              </el-form-item>
-              <el-form-item label="进步" prop="progressMade">
-                <el-input
-                  type="textarea"
-                  :rows="2"
-                  v-model="feedbackForm.progressMade"
-                  placeholder="本次观察到的学生进步点"
-                />
-              </el-form-item>
-              <el-form-item label="欠缺" prop="areasForImprovement">
-                <el-input
-                  type="textarea"
-                  :rows="2"
-                  v-model="feedbackForm.areasForImprovement"
-                  placeholder="学生在哪些方面仍需加强"
-                />
-              </el-form-item>
               <el-row :gutter="15">
-                <el-col :span="12">
-                  <el-form-item label="课堂准时度" prop="punctuality">
-                    <el-input
-                      v-model="feedbackForm.punctuality"
-                      placeholder="例如：准时、迟到5分钟等"
+                <el-col :xs="24" :sm="5">
+                  <el-form-item label="上次举一反三布置时间" prop="lastExtrapolationAssignmentDate">
+                    <el-date-picker
+                      v-model="feedbackForm.lastExtrapolationAssignmentDate"
+                      type="date"
+                      placeholder="选择日期 (若有)"
+                      format="YYYY-MM-DD"
+                      value-format="YYYY-MM-DD"
+                      style="width: 100%"
+                      clearable
                     />
                   </el-form-item>
                 </el-col>
-                <el-col :span="12">
+
+                <el-col :xs="24" :sm="5">
+                  <el-form-item label="完成情况" prop="lastHomeworkStatus">
+                    <el-input
+                      type="textarea"
+                      :rows="1"
+                      v-model="feedbackForm.lastHomeworkStatus"
+                      placeholder="上次作业内容完成情况"
+                    />
+                  </el-form-item>
+                </el-col>
+
+                <el-col :xs="24" :sm="14">
+                  <el-form-item label="完成反馈" prop="lastHomeworkFeedback">
+                    <el-input
+                      type="textarea"
+                      :autosize="{ minRows: 1, maxRows: 2 }"
+                      v-model="feedbackForm.lastHomeworkFeedback"
+                      placeholder="对学生上次作业的评价和反馈"
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-row :gutter="15">
+                <el-col :xs="24" :sm="12">
+                  <el-form-item label="本次授课内容" prop="teachingContent">
+                    <el-input
+                      type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 5 }"
+                      v-model="feedbackForm.teachingContent"
+                      placeholder="简要记录本次课的主要教学点"
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+                <el-col :xs="24" :sm="12">
+                  <el-form-item label="本次课堂表现" prop="classPerformance">
+                    <el-input
+                      type="textarea"
+                      :autosize="{ minRows: 2, maxRows: 5 }"
+                      v-model="feedbackForm.classPerformance"
+                      placeholder="学生在本次课堂上的具体表现"
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-row :gutter="15">
+                <el-col :xs="24" :sm="12">
+                  <el-form-item label="进步" prop="progressMade">
+                    <el-input
+                      type="textarea"
+                      :autosize="{ minRows: 1, maxRows: 4 }"
+                      v-model="feedbackForm.progressMade"
+                      placeholder="本次观察到的学生进步点"
+                    />
+                  </el-form-item>
+                </el-col>
+                <el-col :xs="24" :sm="12">
+                  <el-form-item label="欠缺" prop="areasForImprovement">
+                    <el-input
+                      type="textarea"
+                      :autosize="{ minRows: 1, maxRows: 4 }"
+                      v-model="feedbackForm.areasForImprovement"
+                      placeholder="学生在哪些方面仍需加强"
+                    />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <el-row :gutter="15">
+                <el-col :xs="24" :sm="5">
+                  <el-form-item label="准时度" prop="punctuality">
+                    <el-input v-model="feedbackForm.punctuality" placeholder="准时、迟到5分钟等" />
+                  </el-form-item>
+                </el-col>
+                <el-col :xs="24" :sm="19">
                   <el-form-item label="举一反三" prop="extrapolationAbility">
                     <el-input
+                      type="textarea"
+                      :autosize="{ minRows: 1, maxRows: 2 }"
                       v-model="feedbackForm.extrapolationAbility"
                       placeholder="描述学生触类旁通的能力"
                     />
@@ -379,13 +513,8 @@ watch(
               </el-row>
 
               <el-form-item style="margin-top: 20px">
-                <el-button
-                  type="primary"
-                  @click="generateFeedbackPreview"
-                  icon="el-icon-refresh-right"
-                  >生成反馈预览</el-button
-                >
-                <el-button @click="resetFormVisuals" icon="el-icon-refresh">重置表单</el-button>
+                <el-button type="primary" @click="generateFeedbackPreview">生成反馈预览</el-button>
+                <el-button @click="resetFormVisuals">重置表单</el-button>
               </el-form-item>
             </el-form>
           </div>
@@ -407,16 +536,15 @@ watch(
             v-model="feedbackPreviewText"
             :disabled="!currentStudent"
           />
-          <el-button
-            type="success"
-            @click="handleSubmitFeedback"
-            :loading="isSubmitting"
-            :disabled="!currentStudent || !feedbackPreviewText.trim()"
-            style="width: 100%; margin-top: 15px"
-            icon="el-icon-check"
-          >
-            提交此反馈
-          </el-button>
+
+          <div style="margin-top: 15px; display: flex; justify-content: center; gap: 50px">
+            <el-button type="primary" @click="copyFeedbackText"> 复制文本 </el-button>
+
+            <el-button type="success" @click="handleSubmitFeedback" :loading="isSubmitting">
+              提交此反馈
+            </el-button>
+          </div>
+
           <div
             v-if="submissionError"
             class="error-message"
@@ -452,12 +580,12 @@ watch(
           placement="top"
         >
           <el-card>
-            <template #header>
+            <!-- <template #header>
               <div>
                 反馈于: {{ dayjs(item.feedbackDate).format('YYYY年MM月DD日') }}
                 <span v-if="item.classTime"> {{ item.classTime }}</span>
               </div>
-            </template>
+            </template> -->
             <div
               class="feedback-content-display"
               v-if="item.generatedFeedbackText"
@@ -490,6 +618,17 @@ watch(
               icon="el-icon-edit"
             >
               加载此记录到表单 (编辑模式)
+            </el-button>
+
+            <el-button
+              type="danger"
+              link
+              size="small"
+              @click="handleDeleteFeedback(item._id)"
+              style="margin-top: 10px; margin-left: 10px"
+              icon="el-icon-delete"
+            >
+              删除此记录
             </el-button>
           </el-card>
         </el-timeline-item>

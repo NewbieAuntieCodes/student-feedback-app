@@ -13,4 +13,7 @@ router.get("/", feedbackController.getFeedbackForStudent);
 // 我们稍后会在这里添加获取学生反馈列表的路由
 // router.get('/', feedbackController.getFeedbackForStudent);
 
+// 新增：DELETE /api/courses/:courseId/students/:studentId/feedback/:feedbackId - 删除反馈
+router.delete("/:feedbackId", feedbackController.deleteFeedback); // 注意这里是 :feedbackId
+
 module.exports = router;

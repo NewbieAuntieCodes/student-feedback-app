@@ -148,3 +148,65 @@ exports.getFeedbackForStudent = async (req, res) => {
     res.status(500).json({ message: "服务器内部错误，获取学生反馈失败" });
   }
 };
+
+// @desc    删除指定的反馈记录
+// @route   DELETE /api/courses/:courseId/students/:studentId/feedback/:feedbackId
+// @access  Private
+exports.deleteFeedback = async (req, res) => {
+  try {
+    const { courseId, studentId, feedbackId } = req.params;
+
+    // 1. 验证所有ID格式
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ message: "无效的课程ID格式" });
+    }
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({ message: "无效的学生ID格式" });
+    }
+    if (!mongoose.Types.ObjectId.isValid(feedbackId)) {
+      return res.status(400).json({ message: "无效的反馈ID格式" });
+    }
+
+    // 2. 验证课程和学生的所有权及关联性 (与 getFeedbackForStudent 类似)
+    const course = await Course.findById(courseId);
+    if (!course || course.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "无权操作此课程的反馈" });
+    }
+
+    const student = await Student.findOne({
+      _id: studentId,
+      course: courseId,
+      user: req.user.id,
+    });
+    if (!student) {
+      return res.status(404).json({ message: "未找到关联的学生或无权操作" });
+    }
+
+    // 3. 查找要删除的反馈，并确保它属于当前用户、课程和学生
+    const feedback = await Feedback.findOne({
+      _id: feedbackId,
+      student: studentId,
+      course: courseId,
+      user: req.user.id, // 确保反馈记录也是由当前用户创建的
+    });
+
+    if (!feedback) {
+      return res
+        .status(404)
+        .json({ message: "未找到要删除的反馈记录，或无权删除" });
+    }
+
+    // 4. 执行删除
+    await Feedback.findByIdAndDelete(feedbackId);
+    // 或者: await feedback.deleteOne();
+
+    res
+      .status(200)
+      .json({ message: "反馈记录删除成功", feedbackId: feedbackId });
+    // 也可以返回 204 No Content
+    // res.status(204).send();
+  } catch (error) {
+    console.error("删除反馈错误:", error);
+    res.status(500).json({ message: "服务器内部错误，删除反馈失败" });
+  }
+};
