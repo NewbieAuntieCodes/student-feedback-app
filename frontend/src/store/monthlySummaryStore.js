@@ -15,6 +15,10 @@ export const useMonthlySummaryStore = defineStore('monthlySummary', {
     historyError: null,
     isUpdatingSummary: false,
     updateSummaryError: null,
+    isDeletingSummary: false, // 新增
+    deleteSummaryError: null, // 新增
+    isGeneratingSummary: false, // 新增 (如果选择后端生成)
+    generateSummaryError: null, // 新增 (如果选择后端生成)
   }),
   getters: {
     // 如果需要，可以添加 getters
@@ -27,9 +31,21 @@ export const useMonthlySummaryStore = defineStore('monthlySummary', {
      * 如果后端返回 null (表示当月无总结)，则会根据当前用户信息和课程信息构建一个默认的空总结对象。
      */
     async fetchOrInitializeMonthlySummary(courseId, studentId, year, month) {
+      console.log('[monthlySummaryStore fetchOrInitialize] Received:', {
+        courseId,
+        studentId,
+        year,
+        month,
+      })
       if (!courseId || !studentId || !year || !month) {
         this.summaryError = '获取月度总结缺少必要的参数'
         this.currentSummary = null
+        console.error('[monthlySummaryStore fetchOrInitialize] Invalid params:', {
+          courseId,
+          studentId,
+          year,
+          month,
+        })
         return
       }
       this.isLoadingSummary = true
@@ -80,9 +96,14 @@ export const useMonthlySummaryStore = defineStore('monthlySummary', {
     },
 
     async fetchSummaryHistory(courseId, studentId) {
+      console.log('[monthlySummaryStore fetchSummaryHistory] Received:', { courseId, studentId })
       if (!courseId || !studentId) {
         this.historyError = '获取历史记录缺少必要的参数'
         this.summaryHistory = []
+        console.error('[monthlySummaryStore fetchSummaryHistory] Invalid params:', {
+          courseId,
+          studentId,
+        })
         return
       }
       this.isLoadingHistory = true
@@ -182,6 +203,61 @@ export const useMonthlySummaryStore = defineStore('monthlySummary', {
       await this.fetchOrInitializeMonthlySummary(courseId, studentId, year, month)
     },
 
+    async deleteMonthlySummary(courseId, studentId, summaryId) {
+      if (!courseId || !studentId || !summaryId) {
+        this.deleteSummaryError = '删除月度总结缺少必要的ID'
+        return false
+      }
+      this.isDeletingSummary = true
+      this.deleteSummaryError = null
+      try {
+        await monthlySummaryService.deleteMonthlySummary(courseId, studentId, summaryId)
+        // 从历史记录中移除
+        this.summaryHistory = this.summaryHistory.filter((s) => s._id !== summaryId)
+        // 如果删除的是当前正在查看的总结，则清空它
+        if (this.currentSummary && this.currentSummary._id === summaryId) {
+          this.currentSummary = null
+        }
+        return true
+      } catch (err) {
+        this.deleteSummaryError = err.response?.data?.message || '删除月度总结失败'
+        console.error('deleteMonthlySummary action error:', err)
+        return false
+      } finally {
+        this.isDeletingSummary = false
+      }
+    },
+
+    // (可选) 如果选择后端生成总结内容
+    async generateMonthlySummary(courseId, studentId, year, month) {
+      if (!courseId || !studentId || !year || !month) {
+        this.generateSummaryError = '生成总结缺少必要的参数'
+        return null
+      }
+      this.isGeneratingSummary = true
+      this.generateSummaryError = null
+      try {
+        const response = await monthlySummaryService.generateSummaryContent(
+          courseId,
+          studentId,
+          year,
+          month,
+        )
+        if (response.data && response.data.generatedSummary) {
+          // 返回生成的数据，让组件去填充表单
+          return response.data.generatedSummary
+        }
+        this.generateSummaryError = response.data?.message || '生成总结内容失败，但未返回具体错误。'
+        return null
+      } catch (err) {
+        this.generateSummaryError = err.response?.data?.message || '生成总结内容请求失败'
+        console.error('generateMonthlySummary action error:', err)
+        return null
+      } finally {
+        this.isGeneratingSummary = false
+      }
+    },
+
     clearCurrentSummary() {
       this.currentSummary = null
       this.summaryError = null
@@ -194,6 +270,8 @@ export const useMonthlySummaryStore = defineStore('monthlySummary', {
       this.summaryError = null
       this.historyError = null
       this.updateSummaryError = null
+      this.deleteSummaryError = null // 新增
+      this.generateSummaryError = null // 新增
     },
   },
 })

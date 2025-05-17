@@ -274,3 +274,138 @@ exports.updateUserModifiedSummary = async (req, res) => {
     res.status(500).json({ message: "服务器内部错误，更新总结失败" });
   }
 };
+
+// @desc    删除指定的月度总结
+// @route   DELETE /api/courses/:courseId/students/:studentId/summaries/:summaryId
+// @access  Private
+exports.deleteMonthlySummary = async (req, res) => {
+  try {
+    const { courseId, studentId, summaryId } = req.params;
+    const userId = req.user.id; // 从 protect 中间件获取
+
+    // 1. 验证 ID 格式
+    if (
+      !mongoose.Types.ObjectId.isValid(courseId) ||
+      !mongoose.Types.ObjectId.isValid(studentId) ||
+      !mongoose.Types.ObjectId.isValid(summaryId)
+    ) {
+      return res.status(400).json({ message: "无效的ID格式" });
+    }
+
+    // 2. 验证课程和学生的所有权及关联性 (可选但推荐，确保用户权限)
+    const course = await Course.findById(courseId);
+    if (!course || course.user.toString() !== userId) {
+      return res.status(403).json({ message: "无权操作此课程的月度总结" });
+    }
+
+    const student = await Student.findOne({
+      _id: studentId,
+      course: courseId,
+      user: userId,
+    });
+    if (!student) {
+      return res.status(404).json({ message: "未找到关联的学生或无权操作" });
+    }
+
+    // 3. 查找并删除月度总结
+    const summary = await MonthlySummary.findOneAndDelete({
+      _id: summaryId,
+      student: studentId,
+      course: courseId,
+      user: userId, // 确保总结也属于当前用户
+    });
+
+    if (!summary) {
+      return res
+        .status(404)
+        .json({ message: "未找到要删除的月度总结，或无权删除" });
+    }
+
+    res.status(200).json({ message: "月度总结删除成功", summaryId: summaryId });
+  } catch (error) {
+    console.error("删除月度总结错误:", error);
+    res.status(500).json({ message: "服务器内部错误，删除月度总结失败" });
+  }
+};
+
+// @desc    为指定学生和月份生成月度总结内容（不保存，仅返回组合数据）
+// @route   POST /api/courses/:courseId/students/:studentId/summaries/generate-content
+// @access  Private
+exports.generateMonthlySummaryContent = async (req, res) => {
+  try {
+    const { courseId, studentId } = req.params;
+    const { year, month } = req.body; // 从请求体获取年月
+    const userId = req.user.id;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(studentId) ||
+      !mongoose.Types.ObjectId.isValid(courseId)
+    ) {
+      return res.status(400).json({ message: "无效的学生或课程ID格式" });
+    }
+    if (!year || !month) {
+      return res.status(400).json({ message: "必须提供年份和月份" });
+    }
+
+    const feedbackDate = dayjs(
+      `<span class="math-inline">\{year\}\-</span>{String(month).padStart(2, '0')}-01`
+    ); // 构建当月第一天
+    const startOfMonth = feedbackDate.startOf("month").toDate();
+    const endOfMonth = feedbackDate.endOf("month").toDate();
+
+    const feedbacksThisMonth = await Feedback.find({
+      student: studentId,
+      course: courseId,
+      user: userId,
+      feedbackDate: {
+        $gte: startOfMonth,
+        $lte: endOfMonth,
+      },
+    }).sort({ feedbackDate: 1 });
+
+    if (!feedbacksThisMonth || feedbacksThisMonth.length === 0) {
+      return res.status(200).json({
+        message: "该月无反馈记录，无法生成总结内容。",
+        generatedSummary: {
+          // 返回空结构
+          teachingContentCombined: "",
+          progressMadeCombined: "",
+          areasForImprovementCombined: "",
+          improvementPlanCombined: "",
+        },
+      });
+    }
+
+    const teachingContents = feedbacksThisMonth
+      .map((fb) => fb.teachingContent)
+      .filter(Boolean)
+      .join("\n\n");
+    const progressMades = feedbacksThisMonth
+      .map((fb) => fb.progressMade)
+      .filter(Boolean)
+      .join("\n\n");
+    const areasForImprovements = feedbacksThisMonth
+      .map((fb) => fb.areasForImprovement)
+      .filter(Boolean)
+      .join("\n\n");
+    const improvementPlans = feedbacksThisMonth
+      .map((fb) => fb.improvementPlan)
+      .filter(Boolean)
+      .join("\n\n");
+
+    const generatedSummary = {
+      teachingContentCombined: teachingContents,
+      progressMadeCombined: progressMades,
+      areasForImprovementCombined: areasForImprovements,
+      improvementPlanCombined: improvementPlans,
+    };
+
+    res.status(200).json({
+      message: "成功生成月度总结内容",
+      generatedSummary,
+    });
+  } catch (error) {
+    console.error("生成月度总结内容错误:", error);
+    res.status(500).json({ message: "服务器内部错误，生成月度总结内容失败" });
+  }
+};

@@ -46,7 +46,7 @@ const getInitialFeedbackFormState = () => ({
   progressMade: '',
   areasForImprovement: '',
   improvementPlan: '', // <--- 新增字段
-  punctuality: '准时',
+  punctuality: '优秀',
   extrapolationAbility: '',
   generatedFeedbackText: '',
 })

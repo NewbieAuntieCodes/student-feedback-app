@@ -16,6 +16,11 @@ const studentStore = useStudentStore()
 const courseStore = useCourseStore()
 const authStore = useAuthStore()
 
+const deletingSummaryId = ref(null)
+// 假设您有这些 ref 用于选择生成总结的年月
+const currentYearForSummary = ref(dayjs().year())
+const currentMonthForSummary = ref(dayjs().month() + 1)
+
 const currentStudent = computed(() => studentStore.selectedStudent)
 const currentCourse = computed(() => courseStore.currentCourse)
 const currentUser = computed(() => authStore.currentUser)
@@ -103,38 +108,47 @@ function resetSummaryEditForm() {
 }
 
 const fetchSummaryData = async () => {
-  // 确保 selectedMonth 是有效的 dayjs 对象
-  if (!selectedMonth.value || typeof selectedMonth.value.year !== 'function') {
-    console.warn('fetchSummaryData called with invalid selectedMonth. Aborting.')
-    selectedMonth.value = dayjs() // 尝试重置为当前月
-    // return; // 可以选择中止，或者让后续逻辑处理
-  }
+  const courseIdFromRoute = route.params.courseId
+  const studentIdFromRoute = route.params.studentId
 
-  const student = currentStudent.value
-  const course = currentCourse.value
+  console.log('[MonthlySummaryTabPage] fetchSummaryData - route params:', {
+    courseIdFromRoute,
+    studentIdFromRoute,
+  })
 
-  if (student && student._id && course && course._id) {
-    const year = selectedMonth.value.year()
-    const month = selectedMonth.value.month() + 1
-    console.log(
-      `Workspaceing summary for Student: ${student.name}, Course: ${course.name}, Date: ${year}-${month}`,
+  if (
+    courseIdFromRoute &&
+    studentIdFromRoute &&
+    courseIdFromRoute !== 'undefined' &&
+    studentIdFromRoute !== 'undefined'
+  ) {
+    currentYearForSummary.value = dayjs(
+      monthlySummaryStore.currentSummary?.summaryDate || new Date(),
+    ).year()
+    currentMonthForSummary.value =
+      dayjs(monthlySummaryStore.currentSummary?.summaryDate || new Date()).month() + 1
+
+    // **这里是重点：** 在调用 action 之前，store 实例必须是有效的
+    if (!monthlySummaryStore) {
+      console.error('monthlySummaryStore is not available in fetchSummaryData')
+      return
+    }
+
+    await monthlySummaryStore.fetchOrInitializeMonthlySummary(
+      courseIdFromRoute,
+      studentIdFromRoute,
+      currentYearForSummary.value,
+      currentMonthForSummary.value,
     )
-    await monthlySummaryStore.fetchOrInitializeMonthlySummary(course._id, student._id, year, month)
-    // 只有在成功获取当前总结或初始化后，再获取历史（或者并行，但要注意依赖关系）
-    await monthlySummaryStore.fetchSummaryHistory(course._id, student._id)
+    await monthlySummaryStore.fetchSummaryHistory(courseIdFromRoute, studentIdFromRoute)
   } else {
-    console.warn(
-      'Cannot fetch summary data: currentStudent or currentCourse is missing or invalid.',
-      { student, course },
+    console.error(
+      '[MonthlySummaryTabPage] courseId or studentId is missing or undefined. Aborting summary load.',
     )
-    monthlySummaryStore.clearCurrentSummary()
-    monthlySummaryStore.clearSummaryHistory()
-    // 当学生或课程信息不完整时，也应重置表单
-    if (selectedMonth.value && typeof selectedMonth.value.year === 'function') {
-      resetSummaryEditForm()
-    } else {
-      selectedMonth.value = dayjs() // 确保 selectedMonth 有效
-      resetSummaryEditForm()
+    if (monthlySummaryStore) {
+      // 检查 store 是否存在，再调用 action
+      monthlySummaryStore.clearCurrentSummary()
+      monthlySummaryStore.clearSummaryHistory()
     }
   }
 }
@@ -283,18 +297,29 @@ const loadSummaryFromHistory = (summaryItem) => {
 }
 
 onMounted(() => {
+  console.log('[MonthlySummaryTabPage] Component Mounted. Route params:', route.params)
   fetchSummaryData()
 })
 
 // 监听学生或课程变化，重新加载数据
 watch(
-  [() => route.params.studentId, () => route.params.courseId],
-  () => {
-    selectedMonth.value = dayjs() // 学生或课程变化时，重置为当前月
-    fetchSummaryData()
+  () => [route.params.courseId, route.params.studentId],
+  ([newCourseId, newStudentId], [oldCourseId, oldStudentId]) => {
+    console.log('[MonthlySummaryTabPage] Watcher triggered. New params:', {
+      newCourseId,
+      newStudentId,
+    })
+    if (
+      newCourseId &&
+      newStudentId &&
+      (newCourseId !== oldCourseId || newStudentId !== oldStudentId)
+    ) {
+      console.log('[MonthlySummaryTabPage] Route params changed, reloading summary data.')
+      fetchSummaryData()
+    }
   },
-  { immediate: false },
-) // onMounted 会处理初次加载
+  { immediate: false }, // onMounted 会处理首次加载
+)
 
 // 监听年月选择器的变化
 watch(
@@ -323,6 +348,101 @@ watch(
   },
   { immediate: false },
 ) // immediate: false 通常是好的，因为 onMounted 会处理首次加载
+
+// 假设你有 currentSelectedYear 和 currentSelectedMonth 这样的响应式变量
+// 并且你的表单 v-model 绑定到 monthlySummaryStore.currentSummary
+const handleGenerateSummary = async () => {
+  if (!studentStore.currentStudent?._id || !courseStore.selectedCourse?._id) {
+    ElMessage.warning('请先确保已选择学生和课程。')
+    return
+  }
+  // 假设你有 currentYearForSummary 和 currentMonthForSummary ref
+  // 这些应该由用户选择，或者从 currentSummary.summaryDate 解析出来
+  const year = currentYearForSummary.value // 你需要定义这个
+  const month = currentMonthForSummary.value // 你需要定义这个
+
+  if (!year || !month) {
+    ElMessage.warning('请先选择要生成总结的年份和月份。')
+    return
+  }
+
+  // **这里是重点：** 在调用 action 之前，store 实例必须是有效的
+  if (!monthlySummaryStore) {
+    console.error('monthlySummaryStore is not available in handleGenerateSummary')
+    ElMessage.error('月度总结服务暂时不可用，请稍后再试。')
+    return
+  }
+
+  const generatedData = await monthlySummaryStore.generateMonthlySummary(
+    courseStore.selectedCourse._id,
+    studentStore.currentStudent._id,
+    year,
+    month,
+  )
+
+  if (generatedData && monthlySummaryStore.currentSummary) {
+    if (!monthlySummaryStore.currentSummary) {
+      console.warn('当前总结对象 (currentSummary) 未初始化，无法自动填充生成的内容。')
+      ElMessage.info('已生成内容，请手动复制或确保总结表单已加载。')
+    } else {
+      monthlySummaryStore.currentSummary.teachingContentCombined =
+        generatedData.teachingContentCombined
+      monthlySummaryStore.currentSummary.progressMadeCombined = generatedData.progressMadeCombined
+      monthlySummaryStore.currentSummary.areasForImprovementCombined =
+        generatedData.areasForImprovementCombined
+      monthlySummaryStore.currentSummary.improvementPlanCombined =
+        generatedData.improvementPlanCombined
+      ElMessage.success('总结内容已生成并填充至表单！')
+    }
+  } else if (monthlySummaryStore.generateSummaryError) {
+    ElMessage.error(monthlySummaryStore.generateSummaryError || '生成总结内容失败。')
+  } else if (!generatedData && !monthlySummaryStore.generateSummaryError) {
+    ElMessage.info('该月无反馈记录，无法生成总结内容。')
+  }
+}
+
+const confirmDeleteSummary = async (summaryItem) => {
+  if (!studentStore.currentStudent?._id || !courseStore.selectedCourse?._id) {
+    ElMessage.error('无法获取当前学生或课程信息。')
+    return
+  }
+  if (!monthlySummaryStore) {
+    console.error('monthlySummaryStore is not available in confirmDeleteSummary')
+    ElMessage.error('月度总结服务暂时不可用，请稍后再试。')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 ${summaryItem.summaryDate} 的月度总结吗？此操作无法撤销。`,
+      '确认删除',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    deletingSummaryId.value = summaryItem._id
+    const success = await monthlySummaryStore.deleteMonthlySummary(
+      courseStore.selectedCourse._id,
+      studentStore.currentStudent._id,
+      summaryItem._id,
+    )
+    if (success) {
+      ElMessage.success('月度总结删除成功！')
+    } else {
+      ElMessage.error(monthlySummaryStore.deleteSummaryError || '删除月度总结失败。')
+    }
+  } catch (action) {
+    if (action === 'cancel') {
+      ElMessage.info('删除操作已取消。')
+    } else {
+      console.error('删除月度总结时发生错误:', action)
+      ElMessage.error('删除过程中发生意外错误。')
+    }
+  } finally {
+    deletingSummaryId.value = null
+  }
+}
 </script>
 
 <template>
@@ -448,22 +568,31 @@ watch(
                 />
               </el-form-item>
 
-              <el-form-item>
-                <el-button
-                  type="primary"
-                  @click="handleSaveSummary"
-                  :loading="isUpdatingSummary"
-                  :disabled="!summaryEditForm._id && !activeSummary"
-                  title="通常由反馈自动生成和更新，此处保存用户的手动修改"
-                >
-                  保存当前总结修改
-                </el-button>
-                <el-button
-                  @click="handleCopySummary"
-                  :disabled="!activeSummary && !summaryEditForm.summaryDate"
-                  >复制总结文本</el-button
-                >
-              </el-form-item>
+              <el-button
+                type="primary"
+                @click="handleGenerateSummary"
+                :loading="monthlySummaryStore.isGeneratingSummary"
+                style="margin-bottom: 20px"
+              >
+                生成总结内容
+              </el-button>
+
+              <!-- <el-form-item>
+              <el-button
+                type="primary"
+                @click="handleSaveSummary"
+                :loading="isUpdatingSummary"
+                :disabled="!summaryEditForm._id && !activeSummary"
+                title="通常由反馈自动生成和更新，此处保存用户的手动修改"
+              >
+                保存当前总结修改
+              </el-button>
+              <el-button
+                @click="handleCopySummary"
+                :disabled="!activeSummary && !summaryEditForm.summaryDate"
+                >复制总结文本</el-button
+              >
+            </el-form-item> -->
             </el-form>
           </div>
           <el-empty v-else-if="!currentStudent" description="请先选择一个学生。"></el-empty>
@@ -506,7 +635,7 @@ watch(
         </el-card>
       </el-col>
 
-      <el-row :gutter="20" class="history-row">
+      <!-- <el-row :gutter="20" class="history-row">
         <el-col>
           <el-card shadow="hover" class="history-card-fullwidth">
             <template #header>
@@ -541,7 +670,53 @@ watch(
             <el-empty v-else description="暂无历史月度总结。"></el-empty>
           </el-card>
         </el-col>
-      </el-row>
+      </el-row> -->
+
+      <el-card
+        v-for="summaryItem in monthlySummaryStore.historicalSummaries"
+        :key="summaryItem._id"
+        shadow="hover"
+        style="margin-bottom: 15px"
+      >
+        <template #header>
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <span>{{ summaryItem.summaryDate }} ({{ summaryItem.subjectName }})</span>
+            <el-button
+              type="danger"
+              icon="el-icon-delete"
+              circle
+              size="small"
+              @click="confirmDeleteSummary(summaryItem)"
+              :loading="
+                deletingSummaryId === summaryItem._id && monthlySummaryStore.isDeletingSummary
+              "
+            />
+          </div>
+        </template>
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="授课老师">{{
+            summaryItem.teacherName
+          }}</el-descriptions-item>
+          <el-descriptions-item label="课程进度">{{
+            summaryItem.courseProgress
+          }}</el-descriptions-item>
+          <el-descriptions-item label="授课内容">{{
+            summaryItem.teachingContentCombined || '无'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="进步之处">{{
+            summaryItem.progressMadeCombined || '无'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="欠缺之处">{{
+            summaryItem.areasForImprovementCombined || '无'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="提升方案">{{
+            summaryItem.improvementPlanCombined || '无'
+          }}</el-descriptions-item>
+          <el-descriptions-item label="后续安排">{{
+            summaryItem.followUpContent || '无'
+          }}</el-descriptions-item>
+        </el-descriptions>
+      </el-card>
     </el-row>
   </div>
 </template>
@@ -607,5 +782,26 @@ watch(
 }
 .el-timeline-item {
   padding-bottom: 10px;
+}
+
+.monthly-summary-tab-page {
+  /* 示例：给整个标签页内容一个最大宽度并居中 */
+  /* max-width: 1000px; */
+  /* margin: 0 auto; */
+}
+
+.summary-form-card .el-form-item {
+  /* 示例：如果表单项太宽，可以调整 */
+  /* margin-bottom: 18px; */
+}
+.summary-form-card .el-textarea__inner {
+  min-height: 100px; /* 或者您希望的高度 */
+}
+
+.history-list .el-card {
+  margin-bottom: 20px;
+}
+.history-list .el-descriptions-item__label {
+  width: 120px; /* 统一标签宽度 */
 }
 </style>

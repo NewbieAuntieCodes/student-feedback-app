@@ -16,4 +16,13 @@ router.get("/history", monthlySummaryController.getMonthlySummaryHistory);
 // PUT /api/courses/:courseId/students/:studentId/summaries/:summaryId - 用户手动更新总结
 router.put("/:summaryId", monthlySummaryController.updateUserModifiedSummary);
 
+// 新增：删除月度总结路由
+router.delete("/:summaryId", monthlySummaryController.deleteMonthlySummary);
+
+// 新增：(可选) 生成月度总结内容路由
+router.post(
+  "/generate-content",
+  monthlySummaryController.generateMonthlySummaryContent
+);
+
 module.exports = router;
