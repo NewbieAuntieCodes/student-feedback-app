@@ -1,0 +1,79 @@
+@import './base.css';
+
+/* 基本的 CSS Reset 和全局设置 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0; /* 移除了 Vite 模板中对 heading 等元素的默认 position: relative 和 weight */
+}
+
+html {
+  line-height: 1.5; /* 一个合理的默认行高 */
+  -webkit-font-smoothing: antialiased; /* 字体平滑 */
+  -moz-osx-font-smoothing: grayscale;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    'Fira Sans',
+    'Droid Sans',
+    'Helvetica Neue',
+    sans-serif; /* 一个现代的字体栈 */
+}
+
+body {
+  min-height: 100vh; /* 确保 body 至少和视口一样高 */
+  /* 移除了 Vite 模板中的 display:flex 和 place-items:center */
+  /* 如果你需要背景色或文字颜色，可以在这里设置，但 Element Plus 也会有自己的默认值 */
+  /* color: var(--color-text); */
+  /* background: var(--color-background); */
+  font-size: 14px; /* 一个通用的基础字号 */
+}
+
+/*
+  #app 是你的 Vue 应用挂载点。
+  为了让 Element Plus 的 el-container height:100vh 能正常工作，
+  #app 也需要能够占据整个视口的高度。
+*/
+#app {
+  height: 100vh;
+  width: 100vw; /* 或者 width: 100%; */
+  /* 移除了 Vite 模板中的 max-width, margin: auto, padding, display:grid 等 */
+  /* 如果你的 App.vue 内部只有一个 <router-view /> 并且你希望它垂直排列，可以考虑 flex */
+  /* display: flex; */
+  /* flex-direction: column; */
+}
+
+/* 链接样式 (可选，可以根据你的设计调整) */
+a {
+  text-decoration: none;
+  color: #409eff; /* Element Plus 的主题蓝色 */
+  transition: color 0.3s;
+}
+
+a:hover {
+  color: #66b1ff; /* Element Plus 的浅蓝色 */
+}
+
+/* 如果你使用了 Element Plus，很多基础样式（如字体、边距）会被它的组件覆盖，
+   所以这里的全局 CSS 主要是为了确保根元素 (#app, body, html) 的布局不会干扰到 Element Plus。
+*/
+
+/* 确保 Element Plus 的图标能正确显示（通常 Element Plus 会自己处理） */
+/* 如果你在自定义组件中直接使用图标，可能需要确保字体路径等正确 */
+
+/* 移除了所有 Vite 默认模板中与特定布局（如图文左右布局）相关的媒体查询样式 */
+/* 例如：
+@media (min-width: 1024px) {
+  body { ... }
+  #app { ... }
+}
+这些通常是为了示例页面设计的，不适用于你的全屏管理后台布局。
+*/

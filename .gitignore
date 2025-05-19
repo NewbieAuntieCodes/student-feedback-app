@@ -1,0 +1,42 @@
+# Node.js and npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json # 通常建议提交 package-lock.json，但如果你不希望，可以忽略
+pnpm-lock.yaml  # 如果使用 pnpm
+
+# Vue / Vite specific
+dist/
+dist-ssr/
+.env.local
+.env.*.local
+*.local # 适用于 .env.development.local, .env.production.local 等
+
+# IDE / Editor specific
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Log files
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage directory
+coverage/
+
+# Backend specific (if backend is in the same repo)
+# 例如，如果后端有自己的 .env 文件
+backend/.env
+# 如果后端有其他需要忽略的构建产物或日志
