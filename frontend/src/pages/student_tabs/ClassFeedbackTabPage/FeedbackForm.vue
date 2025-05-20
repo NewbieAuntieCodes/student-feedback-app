@@ -78,7 +78,7 @@ function handleResetForm() {
         @submit.prevent
       >
         <el-row :gutter="15">
-          <el-col :xs="24" :sm="5" md="5">
+          <el-col :xs="24" :sm="6" md="6">
             <el-form-item label="反馈日期" prop="feedbackDate">
               <el-date-picker
                 v-model="internalFeedbackForm.feedbackDate"
@@ -91,7 +91,7 @@ function handleResetForm() {
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :sm="5" md="5">
+          <el-col :xs="24" :sm="6" md="6">
             <el-form-item label="上课时间" prop="classTime">
               <el-select
                 v-model="internalFeedbackForm.classTime"
@@ -113,7 +113,7 @@ function handleResetForm() {
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :sm="4" md="4">
+          <el-col :xs="24" :sm="6" md="6">
             <el-form-item label="学生">
               <el-input
                 :value="currentStudent?.name || 'N/A'"
@@ -124,7 +124,7 @@ function handleResetForm() {
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :sm="5" md="5">
+          <el-col :xs="24" :sm="6" md="6">
             <el-form-item label="授课老师">
               <el-input
                 :value="currentUser?.username || 'N/A'"
@@ -134,8 +134,10 @@ function handleResetForm() {
               />
             </el-form-item>
           </el-col>
+        </el-row>
 
-          <el-col :xs="24" :sm="5" md="5">
+        <el-row :gutter="15">
+          <el-col :xs="24" :sm="6" md="5">
             <el-form-item label="授课科目">
               <el-input
                 :value="currentCourse?.name || 'N/A'"
@@ -145,10 +147,8 @@ function handleResetForm() {
               />
             </el-form-item>
           </el-col>
-        </el-row>
 
-        <el-row :gutter="15">
-          <el-col :xs="24" :sm="5">
+          <el-col :xs="24" :sm="6" md="5">
             <el-form-item label="上次举一反三布置时间" prop="lastExtrapolationAssignmentDate">
               <el-date-picker
                 v-model="internalFeedbackForm.lastExtrapolationAssignmentDate"
@@ -161,8 +161,10 @@ function handleResetForm() {
               />
             </el-form-item>
           </el-col>
+        </el-row>
 
-          <el-col :xs="24" :sm="5">
+        <el-row :gutter="15">
+          <el-col :xs="24" :sm="6" md="6">
             <el-form-item label="完成情况" prop="lastHomeworkStatus">
               <el-input
                 type="textarea"
@@ -173,7 +175,7 @@ function handleResetForm() {
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :sm="14">
+          <el-col :xs="24" :sm="18" md="18">
             <el-form-item label="完成反馈" prop="lastHomeworkFeedback">
               <el-input
                 type="textarea"
@@ -190,7 +192,7 @@ function handleResetForm() {
             <el-form-item label="本次授课内容" prop="teachingContent">
               <el-input
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 5 }"
+                :autosize="{ minRows: 3, maxRows: 5 }"
                 v-model="internalFeedbackForm.teachingContent"
                 placeholder="简要记录本次课的主要教学点"
                 style="width: 100%"
@@ -201,7 +203,7 @@ function handleResetForm() {
             <el-form-item label="本次课堂表现" prop="classPerformance">
               <el-input
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 5 }"
+                :autosize="{ minRows: 3, maxRows: 5 }"
                 v-model="internalFeedbackForm.classPerformance"
                 placeholder="学生在本次课堂上的具体表现"
                 style="width: 100%"
@@ -215,7 +217,7 @@ function handleResetForm() {
             <el-form-item label="进步" prop="progressMade">
               <el-input
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
+                :autosize="{ minRows: 3, maxRows: 5 }"
                 v-model="internalFeedbackForm.progressMade"
                 placeholder="本次观察到的学生进步点"
               />
@@ -225,7 +227,7 @@ function handleResetForm() {
             <el-form-item label="欠缺" prop="areasForImprovement">
               <el-input
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
+                :autosize="{ minRows: 3, maxRows: 5 }"
                 v-model="internalFeedbackForm.areasForImprovement"
                 placeholder="学生在哪些方面仍需加强"
               />
@@ -235,7 +237,7 @@ function handleResetForm() {
             <el-form-item label="提升方案" prop="improvementPlan">
               <el-input
                 type="textarea"
-                :autosize="{ minRows: 2, maxRows: 4 }"
+                :autosize="{ minRows: 3, maxRows: 5 }"
                 v-model="internalFeedbackForm.improvementPlan"
                 placeholder="建议"
               />

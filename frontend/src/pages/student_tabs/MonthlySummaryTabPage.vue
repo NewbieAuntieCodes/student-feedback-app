@@ -58,7 +58,7 @@
                 v-model="summaryFormData.teachingContentCombined"
                 type="textarea"
                 :autosize="{ minRows: 4, maxRows: 8 }"
-                placeholder="点击上方“生成月度总结内容”按钮自动汇总本月所有反馈中的授课内容，或手动编辑。"
+                placeholder="点击“生成月度总结内容”按钮自动汇总本月所有反馈中的授课内容，或手动编辑。"
               />
             </el-form-item>
 

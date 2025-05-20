@@ -1,5 +1,5 @@
 <template>
-  <el-aside width="280px" class="app-sidebar">
+  <el-aside width="200px" class="app-sidebar">
     <div class="sidebar-actions">
       <el-button
         type="primary"

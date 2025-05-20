@@ -1,5 +1,5 @@
 <template>
-  <el-aside width="300px" class="right-sidebar-container" v-if="showPanel">
+  <el-aside width="230px" class="right-sidebar-container" v-if="showPanel">
     <el-scrollbar style="flex-grow: 1; padding: 15px">
       <h3>信息栏</h3>
 
