@@ -1,6 +1,8 @@
 // 0. 加载 .env 文件中的环境变量
 require("dotenv").config();
 
+
+
 // 1. 引入依赖
 const express = require("express");
 const mongoose = require("mongoose");
@@ -22,6 +24,8 @@ app.use(cors()); // <-- 新增：使用 cors 中间件
 app.use(express.json());
 // 如果你打算处理 URL 编码的表单数据 (例如传统的 HTML 表单提交), 可以取消下面这行的注释
 // app.use(express.urlencoded({ extended: true }));
+
+console.log("当前实际使用的 MONGODB_URI:", process.env.MONGODB_URI);
 
 // --- 数据库连接 ---
 const MONGODB_URI = process.env.MONGODB_URI;
