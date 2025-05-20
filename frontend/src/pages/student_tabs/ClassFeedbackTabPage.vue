@@ -100,6 +100,8 @@ const {
   setFormData: setFeedbackFormDataInternal,
 } = useForm(getInitialFeedbackFormState, submitFeedbackAction)
 
+console.log('feedbackForm from useForm:', feedbackForm) // 检查这个的输出
+
 const feedbackPreviewText = ref('') // 预览文本
 
 // --- 父组件处理子组件emit的事件 ---
@@ -140,48 +142,67 @@ const handleDeleteFeedbackFromHistory = async (feedbackId) => {
   await handleDeleteFeedback(feedbackId)
 }
 
-// --- 原有的逻辑函数，现在由父组件持有 ---
 const generateFeedbackPreview = () => {
   const studentName = currentStudent.value?.name || '未知学生'
-  // 直接访问 reactive 对象的属性
   const formattedFeedbackDate = feedbackForm.feedbackDate
     ? dayjs(feedbackForm.feedbackDate).format('YYYY年MM月DD日')
     : '未填写日期'
 
   let preview = `【${studentName} ${formattedFeedbackDate} 教学反馈】\n`
   if (feedbackForm.classTime) {
-    // 直接访问
     preview += `时间：${feedbackForm.classTime}\n`
   }
   preview += `老师：${currentUser.value?.username || 'N/A'}\n`
   preview += `科目：${currentCourse.value?.name || 'N/A'}\n`
 
-  if (feedbackForm.value.lastExtrapolationAssignmentDate) {
-    preview += `上次举一反三布置时间：${dayjs(feedbackForm.value.lastExtrapolationAssignmentDate).format('M月D日')}\n`
+  // 对 lastExtrapolationAssignmentDate 进行安全处理
+  if (feedbackForm.lastExtrapolationAssignmentDate) {
+    try {
+      const extrapolationDate = dayjs(feedbackForm.lastExtrapolationAssignmentDate)
+      if (extrapolationDate.isValid()) {
+        preview += `上次举一反三布置时间：${extrapolationDate.format('M月D日')}\n\n`
+      } else {
+        // 如果日期字符串存在但无效，可以选择显示原始字符串或特定提示
+        preview += `上次举一反三布置时间：${feedbackForm.lastExtrapolationAssignmentDate} (日期格式无法解析)\n`
+        console.warn(
+          '[ClassFeedbackTabPage] lastExtrapolationAssignmentDate is present but not a valid date for dayjs:',
+          feedbackForm.lastExtrapolationAssignmentDate,
+        )
+      }
+    } catch (e) {
+      console.error(
+        '[ClassFeedbackTabPage] Error processing lastExtrapolationAssignmentDate with dayjs:',
+        e,
+      )
+      preview += `上次举一反三布置时间：(日期处理错误)\n`
+    }
   }
-  preview += `【完成情况】${feedbackForm.value.lastHomeworkStatus || '无记录'}\n`
-  preview += `【完成反馈】${feedbackForm.value.lastHomeworkFeedback || '无记录'}\n`
-  preview += `【本次课堂内容】\n${feedbackForm.value.teachingContent || '无记录'}\n`
+  // 如果不希望在 lastExtrapolationAssignmentDate 为空或无效时显示该行，可以移到 if 块内部
+
+  preview += `【完成情况】${feedbackForm.lastHomeworkStatus}\n`
+  preview += `【完成反馈】${feedbackForm.lastHomeworkFeedback}\n\n`
+  preview += `【本次课堂内容】\n${feedbackForm.teachingContent}\n\n`
 
   let combinedPerformance = ''
-  if (feedbackForm.value.classPerformance) {
-    combinedPerformance += feedbackForm.value.classPerformance
+  if (feedbackForm.classPerformance) {
+    combinedPerformance += feedbackForm.classPerformance
   }
-  if (feedbackForm.value.progressMade) {
+  if (feedbackForm.progressMade) {
     if (combinedPerformance) combinedPerformance += '\n'
-    combinedPerformance += feedbackForm.value.progressMade
+    combinedPerformance += feedbackForm.progressMade
   }
-  if (feedbackForm.value.areasForImprovement) {
+  if (feedbackForm.areasForImprovement) {
     if (combinedPerformance) combinedPerformance += '\n'
-    combinedPerformance += feedbackForm.value.areasForImprovement
+    combinedPerformance += feedbackForm.areasForImprovement
   }
-  if (feedbackForm.value.improvementPlan) {
+  if (feedbackForm.improvementPlan) {
     if (combinedPerformance) combinedPerformance += '\n'
-    combinedPerformance += feedbackForm.value.improvementPlan
+    combinedPerformance += feedbackForm.improvementPlan
   }
-  preview += `【本次课堂表现】\n${combinedPerformance || '无记录'}\n`
-  preview += `【准时度】\n${feedbackForm.value.punctuality || '无记录'}\n`
-  preview += `【举一反三】\n${feedbackForm.value.extrapolationAbility || '无记录'}\n`
+  preview += `【本次课堂表现】\n${combinedPerformance}\n\n`
+  preview += `【准时度】\n${feedbackForm.punctuality}\n\n`
+  preview += `【举一反三】\n${feedbackForm.extrapolationAbility}\n\n`
+
   feedbackPreviewText.value = preview
 }
 
