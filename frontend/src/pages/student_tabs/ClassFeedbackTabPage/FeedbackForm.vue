@@ -148,7 +148,7 @@ function handleResetForm() {
             </el-form-item>
           </el-col>
 
-          <el-col :xs="24" :sm="6" md="5">
+          <el-col :xs="24" :sm="10" md="10">
             <el-form-item label="上次举一反三布置时间" prop="lastExtrapolationAssignmentDate">
               <el-date-picker
                 v-model="internalFeedbackForm.lastExtrapolationAssignmentDate"

@@ -115,7 +115,7 @@ const handleFormSubmit = async () => {
   const success = await handleSubmit() // handleSubmit 来自 useForm
   if (success) {
     ElMessage.success(
-      `学生 "<span class="math-inline">\{form\.name\}" 已成功添加到课程 "</span>{props.targetCourse.name}"！`,
+      `学生 "${form.name}" 已成功添加到课程 "${props.targetCourse.name}"！` 
     )
     emit('student-added', form) // 可以在这里传递添加成功的学生数据（虽然useForm中已有）
     emit('update:visible', false) // 关闭模态框

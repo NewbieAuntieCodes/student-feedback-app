@@ -153,14 +153,14 @@ const generateFeedbackPreview = () => {
     preview += `时间：${feedbackForm.classTime}\n`
   }
   preview += `老师：${currentUser.value?.username || 'N/A'}\n`
-  preview += `科目：${currentCourse.value?.name || 'N/A'}\n`
+  preview += `科目：${currentCourse.value?.name || 'N/A'}\n\n`
 
   // 对 lastExtrapolationAssignmentDate 进行安全处理
   if (feedbackForm.lastExtrapolationAssignmentDate) {
     try {
       const extrapolationDate = dayjs(feedbackForm.lastExtrapolationAssignmentDate)
       if (extrapolationDate.isValid()) {
-        preview += `上次举一反三布置时间：${extrapolationDate.format('M月D日')}\n\n`
+        preview += `上次举一反三布置时间：${extrapolationDate.format('M月D日')}\n`
       } else {
         // 如果日期字符串存在但无效，可以选择显示原始字符串或特定提示
         preview += `上次举一反三布置时间：${feedbackForm.lastExtrapolationAssignmentDate} (日期格式无法解析)\n`
